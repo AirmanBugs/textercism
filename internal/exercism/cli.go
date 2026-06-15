@@ -33,15 +33,20 @@ func Download(cfg *config.Config, track, exercise string) (string, error) {
 // Test runs the exercise's tests, streaming output to stdout/stderr. Elixir uses
 // `mix test`; other tracks use the CLI's `exercism test` runner.
 func Test(cfg *config.Config, track, exercise string) error {
-	dir := ExerciseDir(cfg, track, exercise)
-	name, args := testCommand(track)
-
-	cmd := exec.Command(name, args...)
-	cmd.Dir = dir
+	cmd := TestCmd(cfg, track, exercise)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 	return cmd.Run()
+}
+
+// TestCmd returns the (unstarted) test command for an exercise, so callers like
+// the TUI can run it via tea.ExecProcess (which wires up the terminal itself).
+func TestCmd(cfg *config.Config, track, exercise string) *exec.Cmd {
+	name, args := testCommand(track)
+	cmd := exec.Command(name, args...)
+	cmd.Dir = ExerciseDir(cfg, track, exercise)
+	return cmd
 }
 
 func testCommand(track string) (string, []string) {

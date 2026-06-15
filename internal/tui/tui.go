@@ -34,9 +34,6 @@ const (
 	ActionSubmit
 	ActionPause
 	ActionWeb
-	// ActionInstructions is handled inside the TUI (a scrollable screen), not
-	// returned to main like the others.
-	ActionInstructions
 )
 
 type screen int
@@ -45,7 +42,6 @@ const (
 	screenTracks screen = iota
 	screenExercises
 	screenActions
-	screenInstructions
 )
 
 type model struct {
@@ -56,7 +52,8 @@ type model struct {
 
 	screen   screen
 	list     list.Model
-	viewport viewport.Model // instructions reader
+	viewport viewport.Model // instructions pane on the action screen
+	stacked  bool           // true when the terminal is too narrow for side-by-side
 
 	track     string
 	exercises []exercism.Exercise
@@ -67,6 +64,13 @@ type model struct {
 
 	width, height int
 }
+
+// minSideBySideWidth is the terminal width below which the action screen stacks
+// the instructions under the action list instead of placing them side by side.
+const minSideBySideWidth = 90
+
+// actionPaneWidth is how wide the action list is in the side-by-side layout.
+const actionPaneWidth = 34
 
 // Run launches the interactive UI starting at the track picker. If startTrack is
 // non-empty it jumps straight to that track's exercises. showSync controls
@@ -114,25 +118,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.list.SetSize(msg.Width, msg.Height-1)
-		m.viewport.Width = msg.Width
-		m.viewport.Height = msg.Height - 1
+		m.relayout()
 		return m, nil
 
 	case tea.KeyMsg:
-		// The instructions screen is a scrollable reader, not a list.
-		if m.screen == screenInstructions {
-			switch msg.String() {
-			case "ctrl+c":
-				return m, tea.Quit
-			case "q", "esc":
-				return m.goBack()
-			}
-			var cmd tea.Cmd
-			m.viewport, cmd = m.viewport.Update(msg)
-			return m, cmd
-		}
-
 		// Let the list handle keys while filtering (so typing works).
 		if m.list.FilterState() == list.Filtering {
 			break
@@ -145,6 +134,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			return m.choose()
 		}
+
+		// On the action screen, PgUp/PgDn (and ctrl+u/d) scroll the instructions
+		// pane; arrow keys drive the action list.
+		if m.screen == screenActions {
+			switch msg.String() {
+			case "pgup", "pgdown", "ctrl+u", "ctrl+d":
+				var cmd tea.Cmd
+				m.viewport, cmd = m.viewport.Update(msg)
+				return m, cmd
+			}
+		}
 	}
 
 	var cmd tea.Cmd
@@ -152,13 +152,53 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m *model) View() string {
-	if m.screen == screenInstructions {
-		footer := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).
-			Render("↑/↓ scroll · q back")
-		return m.viewport.View() + "\n" + footer
+// relayout sizes the list and instructions viewport for the current screen and
+// terminal dimensions. On the action screen it splits the width between the
+// action list and the instructions pane (or stacks them when too narrow).
+func (m *model) relayout() {
+	bodyH := m.height - 1 // leave a row for the footer
+	if bodyH < 1 {
+		bodyH = 1
 	}
-	return m.list.View()
+
+	if m.screen != screenActions {
+		m.list.SetSize(m.width, bodyH)
+		return
+	}
+
+	m.stacked = m.width < minSideBySideWidth
+	if m.stacked {
+		listH := bodyH / 2
+		m.list.SetSize(m.width, listH)
+		m.viewport.Width = m.width
+		m.viewport.Height = bodyH - listH
+	} else {
+		m.list.SetSize(actionPaneWidth, bodyH)
+		m.viewport.Width = m.width - actionPaneWidth - 2 // 2 = gap
+		m.viewport.Height = bodyH
+	}
+
+	// Re-wrap the instructions to the (possibly changed) pane width, preserving
+	// scroll position as best we can.
+	off := m.viewport.YOffset
+	m.viewport.SetContent(m.renderInstructions(m.viewport.Width))
+	m.viewport.SetYOffset(off)
+}
+
+var footerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
+func (m *model) View() string {
+	if m.screen != screenActions {
+		return m.list.View()
+	}
+
+	// Action screen: actions + instructions, side by side (or stacked when narrow).
+	footer := footerStyle.Render("↑/↓ select · enter run · PgUp/PgDn scroll instructions · q back")
+	if m.stacked {
+		return m.list.View() + "\n" + m.viewport.View() + "\n" + footer
+	}
+	body := lipgloss.JoinHorizontal(lipgloss.Top, m.list.View(), "  ", m.viewport.View())
+	return body + "\n" + footer
 }
 
 // --- transitions ---
@@ -180,11 +220,6 @@ func (m *model) goBack() (tea.Model, tea.Cmd) {
 	case screenActions:
 		m.list = newExerciseList(m.cfg, m.track, m.exercises, m.width, m.height-1)
 		m.screen = screenExercises
-		return m, nil
-	case screenInstructions:
-		// Back to the selected exercise's action menu.
-		m.list = newActionList(m.cfg, m.track, m.selected, m.showSync, m.width, m.height-1)
-		m.screen = screenActions
 		return m, nil
 	}
 	return m, nil
@@ -211,19 +246,12 @@ func (m *model) choose() (tea.Model, tea.Cmd) {
 		if !ok {
 			return m, nil
 		}
-		m.selected = it.ex
-		m.list = newActionList(m.cfg, m.track, it.ex, m.showSync, m.width, m.height-1)
-		m.screen = screenActions
+		m.enterActions(it.ex)
 		return m, nil
 
 	case screenActions:
 		it, ok := m.list.SelectedItem().(actionItem)
 		if !ok {
-			return m, nil
-		}
-		// Instructions are shown in-app (a scrollable screen), not run by main.
-		if it.kind == ActionInstructions {
-			m.openInstructions()
 			return m, nil
 		}
 		m.result = Action{Kind: it.kind, Track: m.track, Exercise: m.selected.Slug}
@@ -232,33 +260,30 @@ func (m *model) choose() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// openInstructions renders the selected exercise's README into the viewport and
-// switches to the instructions screen. If the exercise isn't downloaded (no
-// local README), it shows the API blurb plus a hint to start it.
-func (m *model) openInstructions() {
-	w := m.width
-	if w <= 0 {
-		w = 80
-	}
-	h := m.height - 1
-	if h <= 0 {
-		h = 20
-	}
+// enterActions switches to the action screen for ex: builds the action list,
+// pre-renders the instructions into the viewport (so the pane is populated with
+// no further lag), and lays out the split.
+func (m *model) enterActions(ex exercism.Exercise) {
+	m.selected = ex
+	m.list = newActionList(m.cfg, m.track, ex, m.showSync, m.width, m.height-1)
+	m.viewport = viewport.New(m.width, m.height)
+	m.screen = screenActions
+	m.relayout() // sizes panes and renders the instructions into the viewport
+}
 
-	text, ok := render.Instructions(m.cfg, m.track, m.selected.Slug, w)
-	if !ok {
-		blurb := m.selected.Blurb
-		if blurb == "" {
-			blurb = "_No description available._"
-		}
-		text = render.Markdown(
-			fmt.Sprintf("# %s\n\n%s\n\n_Not downloaded yet — choose **Start** to get the full instructions._",
-				m.selected.Title, blurb), w)
+// renderInstructions returns the rendered README for the selected exercise, or a
+// blurb + hint when it isn't downloaded yet.
+func (m *model) renderInstructions(width int) string {
+	if text, ok := render.Instructions(m.cfg, m.track, m.selected.Slug, width); ok {
+		return text
 	}
-
-	m.viewport = viewport.New(w, h)
-	m.viewport.SetContent(text)
-	m.screen = screenInstructions
+	blurb := m.selected.Blurb
+	if blurb == "" {
+		blurb = "_No description available._"
+	}
+	return render.Markdown(
+		fmt.Sprintf("# %s\n\n%s\n\n_Not downloaded yet — choose **Start** to get the full instructions._",
+			m.selected.Title, blurb), width)
 }
 
 func (m *model) loadExercises() error {
@@ -343,7 +368,6 @@ func actionsFor(display exercism.DisplayStatus, local exercism.LocalState, showS
 	}
 
 	items = append(items,
-		actionItem{"Instructions", "Read the exercise instructions", ActionInstructions},
 		actionItem{"Run tests", "Run the exercise's tests", ActionTest},
 		actionItem{"Submit", "Test, then submit to Exercism", ActionSubmit},
 	)

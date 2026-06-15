@@ -78,6 +78,39 @@ func TestBackNavigation(t *testing.T) {
 	}
 }
 
+func sizeMsg(m *model, w, h int) *model {
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
+	return updated.(*model)
+}
+
+func TestActionScreenLayout(t *testing.T) {
+	// Wide terminal -> side by side; the action view contains both the action
+	// list (e.g. "Submit") and the rendered instructions pane.
+	m := newTestModel()
+	m = sizeMsg(m, 120, 30)
+	m = send(m, "enter") // -> actions for lasagna
+	if m.stacked {
+		t.Fatalf("expected side-by-side at width 120, got stacked")
+	}
+	v := m.View()
+	if !strings.Contains(v, "Submit") {
+		t.Fatalf("action view missing the action list; got:\n%s", v)
+	}
+	// The instructions pane renders the blurb fallback (exercise isn't on disk),
+	// so the title should appear somewhere in the joined view.
+	if !strings.Contains(v, "Lasagna") {
+		t.Fatalf("action view missing instructions pane content; got:\n%s", v)
+	}
+
+	// Narrow terminal -> stacked.
+	m2 := newTestModel()
+	m2 = sizeMsg(m2, 70, 30)
+	m2 = send(m2, "enter")
+	if !m2.stacked {
+		t.Fatalf("expected stacked at width 70, got side-by-side")
+	}
+}
+
 func hasAction(items []list.Item, kind ActionKind) bool {
 	for _, it := range items {
 		if it.(actionItem).kind == kind {

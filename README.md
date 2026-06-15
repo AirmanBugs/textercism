@@ -81,9 +81,10 @@ Merged, that gives:
 - **Start / continue** opens a **single-folder** VS Code window (one language server,
   avoiding the multi-root workspace crash).
 - **Instructions** render in the terminal via [Glamour](https://github.com/charmbracelet/glamour):
-  the TUI has a scrollable **Instructions** screen, and `textercism read <track> <ex>`
-  prints the rendered README to stdout (pipe to `less` for paging). The `web` command
-  still opens the exercise on exercism.org in a browser when you want it.
+  selecting an exercise shows its rendered instructions in a pane **beside the action
+  list** (stacked on narrow terminals; PgUp/PgDn scrolls them). `textercism read
+  <track> <ex>` also prints the rendered README to stdout (pipe to `less` for paging).
+  The `web` command still opens the exercise on exercism.org in a browser.
 - **Submit** runs the tests, then `exercism submit` in place.
 - **Drafts** (in-progress, unsubmitted code) are the only thing that needs syncing,
   since Exercism doesn't store them. Cross-device sync is handled by a pluggable
