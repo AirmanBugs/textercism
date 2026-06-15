@@ -1,21 +1,24 @@
 defmodule Xrc.Menu do
   @moduledoc """
-  Arrow-key driven single-select menu. Owl's `select` is numeric-entry only, so
-  this reads raw keystrokes (via `stty` raw mode) and renders a highlighted list
-  that the user moves through with ↑/↓ (or k/j) and confirms with Enter.
+  Arrow-key driven single-select menu. Owl's `select` is numeric-entry only, and
+  the BEAM's managed stdio server swallows raw-mode reads inside an escript, so
+  this reads keystrokes by shelling out to the controlling terminal (`/dev/tty`)
+  with `stty`/`dd`. Each keypress runs one short `sh` command attached to the tty.
 
-  Falls back to numbered input when stdin isn't an interactive TTY (e.g. piped),
-  so non-interactive use and tests still work.
+  Navigation: ↑/↓ (or k/j) to move, Enter to confirm, q/Esc/Ctrl-C to cancel.
+
+  Falls back to numbered input when there's no interactive tty (e.g. piped
+  stdin), so non-interactive use and tests still work.
   """
 
   @doc """
   Prompt the user to pick one item from `items`.
 
   Options:
-    * `:label`     — heading printed above the list
-    * `:render`    — 1-arg fun returning Owl data for an item (default: inspect)
+    * `:label`  — heading printed above the list
+    * `:render` — 1-arg fun returning Owl data for an item (default: inspect)
 
-  Returns the chosen item, or `nil` if cancelled (q / Esc / Ctrl-C).
+  Returns the chosen item, or `nil` if cancelled.
   """
   def select(items, opts \\ [])
 
@@ -32,12 +35,16 @@ defmodule Xrc.Menu do
     end
   end
 
-  # --- interactive (raw mode) ---
+  # --- interactive ---
 
   defp interactive_select(items, label, render) do
-    with_raw_mode(fn ->
+    hide_cursor()
+
+    try do
       loop(items, label, render, 0, false)
-    end)
+    after
+      show_cursor()
+    end
   end
 
   defp loop(items, label, render, cursor, drawn?) do
@@ -60,20 +67,15 @@ defmodule Xrc.Menu do
     |> Enum.with_index()
     |> Enum.each(fn {item, idx} ->
       selected? = idx == cursor
-
-      pointer =
-        if selected?, do: Owl.Data.tag("❯ ", :cyan), else: "  "
-
+      pointer = if selected?, do: Owl.Data.tag("❯ ", :cyan), else: "  "
       line = render.(item)
       line = if selected?, do: Owl.Data.tag(line, :bright), else: line
       Owl.IO.puts([pointer, line])
     end)
   end
 
-  # Total terminal rows the menu occupies (label + one per item).
-  defp rows(items, label) do
-    length(items) + if(label, do: 1, else: 0)
-  end
+  # Total terminal rows the menu occupies (label line + one per item).
+  defp rows(items, label), do: length(items) + if(label, do: 1, else: 0)
 
   defp move_cursor_up(0), do: :ok
   defp move_cursor_up(n), do: IO.write("\e[#{n}A\e[0J")
@@ -81,71 +83,53 @@ defmodule Xrc.Menu do
   defp inc(i, len), do: rem(i + 1, len)
   defp dec(i, len), do: rem(i - 1 + len, len)
 
-  # --- key reading ---
+  # --- key reading via /dev/tty ---
 
-  # Returns :up | :down | :enter | :cancel | :other
+  # Read one logical keypress by reading raw bytes from the controlling terminal.
+  # `head -c` would block on partial escape sequences, so we read up to 3 bytes
+  # with a short inter-byte timeout (`stty time 1`, tenths of a second) and let
+  # the shell return whatever arrived. Returns :up|:down|:enter|:cancel|:other.
   defp read_key do
-    case IO.binread(:stdio, 1) do
-      "\r" -> :enter
-      "\n" -> :enter
-      "\e" -> read_escape()
-      # Ctrl-C, q, Q, Esc handled as cancel
-      <<3>> -> :cancel
-      "q" -> :cancel
-      "Q" -> :cancel
-      "k" -> :up
-      "j" -> :down
-      :eof -> :cancel
-      _ -> :other
+    script = ~S"""
+    old=$(stty -g < /dev/tty)
+    stty raw -echo min 1 time 1 < /dev/tty
+    dd if=/dev/tty bs=3 count=1 2>/dev/null | od -An -tu1
+    stty "$old" < /dev/tty
+    """
+
+    case sh(script) do
+      {out, 0} -> classify(parse_bytes(out))
+      _ -> :cancel
     end
   end
 
-  defp read_escape do
-    case IO.binread(:stdio, 1) do
-      "[" ->
-        case IO.binread(:stdio, 1) do
-          "A" -> :up
-          "B" -> :down
-          _ -> :other
-        end
-
-      # lone Esc
-      _ ->
-        :cancel
-    end
+  defp parse_bytes(out) do
+    out
+    |> String.split(~r/\s+/, trim: true)
+    |> Enum.map(&String.to_integer/1)
   end
 
-  # --- raw mode handling ---
+  # Carriage return / newline -> enter; ESC [ A/B -> up/down; lone ESC, q, Ctrl-C
+  # -> cancel; vim keys k/j -> up/down.
+  defp classify([13 | _]), do: :enter
+  defp classify([10 | _]), do: :enter
+  defp classify([27, 91, 65 | _]), do: :up
+  defp classify([27, 91, 66 | _]), do: :down
+  defp classify([27]), do: :cancel
+  defp classify([3 | _]), do: :cancel
+  defp classify([?q | _]), do: :cancel
+  defp classify([?Q | _]), do: :cancel
+  defp classify([?k | _]), do: :up
+  defp classify([?j | _]), do: :down
+  defp classify([]), do: :other
+  defp classify(_), do: :other
 
-  defp with_raw_mode(fun) do
-    saved = stty(["-g"]) |> String.trim()
-    stty(["raw", "-echo"])
-    hide_cursor()
-
-    try do
-      fun.()
-    after
-      show_cursor()
-      if saved != "", do: stty([saved]), else: stty(["sane"])
-      IO.write("\n")
-    end
-  end
+  # --- tty helpers ---
 
   defp interactive_tty? do
-    # `stty` against the controlling terminal succeeds only when one exists.
     match?({_, 0}, sh("stty -g < /dev/tty"))
   rescue
     _ -> false
-  end
-
-  # Run stty against /dev/tty so it controls the real terminal regardless of how
-  # the BEAM wired the escript's stdin.
-  defp stty(args) do
-    case sh("stty #{Enum.join(args, " ")} < /dev/tty") do
-      {out, _} -> out
-    end
-  rescue
-    _ -> ""
   end
 
   defp sh(command), do: System.cmd("sh", ["-c", command], stderr_to_stdout: true)
