@@ -7,22 +7,31 @@ API for per-exercise **status** (not-started / in-progress / completed / publish
 
 Replaces the old `<track>/start-exercise.sh` and `<track>/end-exercise.sh` scripts.
 
+A Go program using [Bubble Tea](https://github.com/charmbracelet/bubbletea) for the
+interactive UI (arrow-key navigation, filtering).
+
 ## Requirements
 
+- Go (to build) — `brew install go`.
 - The official `exercism` CLI, configured (`exercism configure --token=...`). `xrc`
   reads the token, workspace, and API base from `~/.config/exercism/user.json`.
 - `code` (VS Code) on `PATH` for the editor integration.
-- Run from inside this repo (exercises live at `<repo>/<track>/<exercise>/`).
+
+`xrc` finds the repo from its own binary location (`<repo>/tooling/xrc`), so it works
+from any directory. Override with `XRC_REPO_ROOT` if needed.
 
 ## Build
 
 ```sh
 cd tooling
-mix deps.get
-mix escript.build      # produces ./xrc
+go build -o xrc .       # produces ./xrc
 ```
 
-Put `tooling/xrc` on your `PATH` (or symlink it) to run `xrc` from anywhere.
+Put `tooling/xrc` on your `PATH` (or symlink it) to run `xrc` from anywhere, e.g.:
+
+```sh
+ln -sf "$PWD/xrc" ~/.local/bin/xrc
+```
 
 ## Usage
 
@@ -34,7 +43,7 @@ xrc list <track>          # list exercises with status badges
 xrc start <track> <ex>    # download + open in VS Code (single window: README + solution)
 xrc restart <track> <ex>  # re-download stubs (overwrites) + open
 xrc open <track> <ex>     # open in VS Code (downloads first if missing)
-xrc test <track> <ex>     # run the track's tests (mix test for elixir)
+xrc test <track> <ex>     # run the track's tests (mix test on elixir, else exercism test)
 xrc submit <track> <ex>   # test, submit, then commit + push ("<track>: complete <ex>")
 xrc web <track> <ex>      # open the exercise/solution page in the browser
 ```
