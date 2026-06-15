@@ -19,7 +19,17 @@ func Download(cfg *config.Config, track, exercise string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("exercism download failed: %s", strings.TrimSpace(string(out)))
 	}
-	return moveIntoRepo(cfg, track, exercise, string(out))
+	dir, err := moveIntoRepo(cfg, track, exercise, string(out))
+	if err != nil {
+		return "", err
+	}
+	// Capture the pristine stub right after download (solution == stub now) so we
+	// can later tell whether the user has edited the solution.
+	if err := captureStub(cfg, track, exercise); err != nil {
+		// Non-fatal: stub capture only powers the edited/unedited distinction.
+		return dir, nil
+	}
+	return dir, nil
 }
 
 // The CLI prints "Downloaded to\n<path>"; move that dir into the repo.

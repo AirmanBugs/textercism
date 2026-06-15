@@ -26,6 +26,7 @@ Usage:
   xrc open <track> <ex>     open in VS Code (downloads first if missing)
   xrc test <track> <ex>     run the track's tests
   xrc submit <track> <ex>   test, submit, commit + push
+  xrc pause <track> <ex>    commit work-in-progress + push (sync across devices)
   xrc web <track> <ex>      open the exercise/solution page in the browser
 `
 
@@ -56,6 +57,8 @@ func main() {
 		actions.Test(cfg, args[1], args[2])
 	case args[0] == "submit" && len(args) == 3:
 		actions.Submit(cfg, args[1], args[2], promptConfirm)
+	case args[0] == "pause" && len(args) == 3:
+		actions.Pause(cfg, args[1], args[2])
 	case args[0] == "web" && len(args) == 3:
 		actions.Web(cfg, args[1], args[2])
 
@@ -92,6 +95,8 @@ func perform(cfg *config.Config, a tui.Action) {
 		actions.Test(cfg, a.Track, a.Exercise)
 	case tui.ActionSubmit:
 		actions.Submit(cfg, a.Track, a.Exercise, promptConfirm)
+	case tui.ActionPause:
+		actions.Pause(cfg, a.Track, a.Exercise)
 	case tui.ActionWeb:
 		actions.Web(cfg, a.Track, a.Exercise)
 	case tui.ActionNone:
@@ -124,8 +129,10 @@ func printExercises(cfg *config.Config, track string) {
 	}
 	fmt.Println(exercism.Legend())
 	for _, e := range exs {
+		state := exercism.LocalStateOf(cfg, track, e.Slug)
+		display := exercism.Display(e.Status, state)
 		local := " "
-		if exercism.Downloaded(cfg, track, e.Slug) {
+		if state != exercism.NotOnDisk {
 			local = "⬇"
 		}
 		diff := e.Difficulty
@@ -136,7 +143,7 @@ func printExercises(cfg *config.Config, track string) {
 		if e.IsRecommended {
 			rec = " ★rec"
 		}
-		fmt.Printf("%s %s %-28s [%s]%s\n", e.Status.Badge(), local, e.Title, diff, rec)
+		fmt.Printf("%s %s %-28s [%s]%s\n", display.Badge(), local, e.Title, diff, rec)
 	}
 }
 

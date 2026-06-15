@@ -31,20 +31,21 @@ func (t trackItem) FilterValue() string { return t.slug + " " + t.title }
 
 // exerciseItem implements DefaultItem.
 type exerciseItem struct {
-	ex         exercism.Exercise
-	downloaded bool
+	ex      exercism.Exercise
+	local   exercism.LocalState
+	display exercism.DisplayStatus
 }
 
 func (e exerciseItem) Title() string {
 	local := " "
-	if e.downloaded {
+	if e.local != exercism.NotOnDisk {
 		local = "⬇"
 	}
 	rec := ""
 	if e.ex.IsRecommended {
 		rec = "  ★rec"
 	}
-	return fmt.Sprintf("%s %s %s%s", e.ex.Status.Badge(), local, e.ex.Title, rec)
+	return fmt.Sprintf("%s %s %s%s", e.display.Badge(), local, e.ex.Title, rec)
 }
 
 func (e exerciseItem) Description() string {
@@ -52,7 +53,7 @@ func (e exerciseItem) Description() string {
 	if diff == "" {
 		diff = "—"
 	}
-	return fmt.Sprintf("[%s] %s", diff, e.ex.Status.Label())
+	return fmt.Sprintf("[%s] %s", diff, e.display.Label())
 }
 
 func (e exerciseItem) FilterValue() string { return e.ex.Title + " " + e.ex.Slug }

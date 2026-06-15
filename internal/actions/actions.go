@@ -51,14 +51,53 @@ func Start(cfg *config.Config, track, exercise string, force bool) {
 	openEditor(cfg, track, exercise)
 }
 
-// Open opens an already-downloaded exercise; downloads first if missing.
+// Open continues an exercise: pull first (recover WIP synced from another
+// device), open it if present, otherwise download the stub. This is what makes
+// "continue" work for a server-started exercise that isn't on this machine.
 func Open(cfg *config.Config, track, exercise string) {
 	if exercism.Downloaded(cfg, track, exercise) {
 		openEditor(cfg, track, exercise)
 		return
 	}
-	info("Not downloaded yet — fetching first.")
-	Start(cfg, track, exercise, false)
+	// Not on disk: it may be a WIP committed on another device, or a fresh
+	// server-started exercise. Sync, then re-check before falling back to download.
+	if !syncBeforeWork(cfg) {
+		return
+	}
+	if exercism.Downloaded(cfg, track, exercise) {
+		ok("Recovered work-in-progress from sync.")
+		openEditor(cfg, track, exercise)
+		return
+	}
+	info("Nothing local to continue — downloading the stub.")
+	dir, err := exercism.Download(cfg, track, exercise)
+	if err != nil {
+		fail(err.Error())
+		return
+	}
+	ok("Downloaded to " + dir)
+	openEditor(cfg, track, exercise)
+}
+
+// Pause commits the exercise's work-in-progress and pushes it, so it can be
+// resumed on another device.
+func Pause(cfg *config.Config, track, exercise string) {
+	if !exercism.Downloaded(cfg, track, exercise) {
+		fail("Exercise not downloaded; nothing to pause.")
+		return
+	}
+	info("Saving work-in-progress ...")
+	res, err := exercism.WipCommitAndPush(cfg, track, exercise)
+	if err != nil {
+		fail(err.Error())
+		return
+	}
+	switch res {
+	case exercism.CommitOK:
+		ok(fmt.Sprintf("Synced WIP: %s: wip %s", track, exercise))
+	case exercism.CommitNoChanges:
+		info("No changes to sync.")
+	}
 }
 
 func openEditor(cfg *config.Config, track, exercise string) {

@@ -79,15 +79,30 @@ func TestBackNavigation(t *testing.T) {
 }
 
 func TestActionsForStatus(t *testing.T) {
-	// Not started -> first action is Start.
-	items := actionsFor(exercism.NotStarted, false)
+	// Not started, nothing local -> first action is Start.
+	items := actionsFor(exercism.DNotStarted, exercism.NotOnDisk)
 	if got := items[0].(actionItem); got.kind != ActionStart {
 		t.Fatalf("not-started first action = %v, want Start", got.kind)
 	}
-	// Downloaded -> first action is Open (continue without re-download).
-	items = actionsFor(exercism.Completed, true)
+	// Server-started but nothing local -> Continue that downloads (ActionStart).
+	items = actionsFor(exercism.DStartedServer, exercism.NotOnDisk)
+	if got := items[0].(actionItem); got.kind != ActionStart {
+		t.Fatalf("server-started/no-disk first action = %v, want Start(download)", got.kind)
+	}
+	// Downloaded with edits -> first action is Open (continue without re-download).
+	items = actionsFor(exercism.DInProgress, exercism.OnDiskEdited)
 	if got := items[0].(actionItem); got.kind != ActionOpen {
 		t.Fatalf("downloaded first action = %v, want Open", got.kind)
+	}
+	// Pause action is always present.
+	hasPause := false
+	for _, it := range items {
+		if it.(actionItem).kind == ActionPause {
+			hasPause = true
+		}
+	}
+	if !hasPause {
+		t.Fatalf("expected a Pause action in the menu")
 	}
 }
 

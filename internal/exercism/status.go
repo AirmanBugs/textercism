@@ -34,40 +34,82 @@ func DeriveStatus(isUnlocked bool, solutionStatus string, hasSolution bool) Stat
 	}
 }
 
+// DisplayStatus merges the server-side Status with the local on-disk state into
+// the single state shown to the user. This is what the badge/label reflect.
+type DisplayStatus int
+
+const (
+	DNotStarted    DisplayStatus = iota // no solution anywhere
+	DStartedServer                      // server says started/iterated, nothing local to continue
+	DStarted                            // downloaded, stub untouched
+	DInProgress                         // downloaded with local edits (real WIP)
+	DCompleted                          // marked complete
+	DPublished                          // completed + published
+	DLocked                             // not yet unlocked
+)
+
+// Display merges an exercise's server Status with its LocalState. The local
+// state only refines the "in between" states; completed/published/locked are
+// authoritative from the server regardless of disk.
+func Display(s Status, local LocalState) DisplayStatus {
+	switch s {
+	case Completed:
+		return DCompleted
+	case Published:
+		return DPublished
+	case Locked:
+		return DLocked
+	}
+	// NotStarted / InProgress (server started|iterated) refined by local state.
+	switch local {
+	case OnDiskEdited:
+		return DInProgress
+	case OnDiskUnedited:
+		return DStarted
+	default: // NotOnDisk
+		if s == InProgress {
+			return DStartedServer
+		}
+		return DNotStarted
+	}
+}
+
 type badge struct {
 	glyph string
 	color lipgloss.Color
 	label string
 }
 
-var badges = map[Status]badge{
-	NotStarted: {"●", lipgloss.Color("8"), "not started"},
-	InProgress: {"◐", lipgloss.Color("3"), "in progress"},
-	Completed:  {"✓", lipgloss.Color("2"), "completed"},
-	Published:  {"★", lipgloss.Color("6"), "published"},
-	Locked:     {"🔒", lipgloss.Color("1"), "locked"},
+var badges = map[DisplayStatus]badge{
+	DNotStarted:    {"●", lipgloss.Color("8"), "not started"},
+	DStartedServer: {"◌", lipgloss.Color("3"), "started (server)"},
+	DStarted:       {"◔", lipgloss.Color("3"), "started"},
+	DInProgress:    {"◐", lipgloss.Color("3"), "in progress"},
+	DCompleted:     {"✓", lipgloss.Color("2"), "completed"},
+	DPublished:     {"★", lipgloss.Color("6"), "published"},
+	DLocked:        {"🔒", lipgloss.Color("1"), "locked"},
 }
 
-// Badge returns the colored glyph for a status.
-func (s Status) Badge() string {
-	b := badges[s]
+// Badge returns the colored glyph for a display status.
+func (d DisplayStatus) Badge() string {
+	b := badges[d]
 	return lipgloss.NewStyle().Foreground(b.color).Render(b.glyph)
 }
 
-// Label returns the human-readable name for a status.
-func (s Status) Label() string {
-	return badges[s].label
+// Label returns the human-readable name for a display status.
+func (d DisplayStatus) Label() string {
+	return badges[d].label
 }
 
 // Legend renders the status legend line for list footers.
 func Legend() string {
-	order := []Status{NotStarted, InProgress, Completed, Published, Locked}
+	order := []DisplayStatus{DNotStarted, DStartedServer, DStarted, DInProgress, DCompleted, DPublished, DLocked}
 	out := ""
-	for i, s := range order {
+	for i, d := range order {
 		if i > 0 {
-			out += "   "
+			out += "  "
 		}
-		out += s.Badge() + " " + s.Label()
+		out += d.Badge() + " " + d.Label()
 	}
 	return out
 }

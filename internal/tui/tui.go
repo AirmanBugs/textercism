@@ -30,6 +30,7 @@ const (
 	ActionOpen
 	ActionTest
 	ActionSubmit
+	ActionPause
 	ActionWeb
 )
 
@@ -238,36 +239,45 @@ func newExerciseList(cfg *config.Config, track string, exs []exercism.Exercise, 
 	// Show locked exercises too, but they aren't selectable into actions.
 	items := make([]list.Item, 0, len(exs))
 	for _, e := range exs {
-		items = append(items, exerciseItem{ex: e, downloaded: exercism.Downloaded(cfg, track, e.Slug)})
+		local := exercism.LocalStateOf(cfg, track, e.Slug)
+		items = append(items, exerciseItem{
+			ex:      e,
+			local:   local,
+			display: exercism.Display(e.Status, local),
+		})
 	}
-	l := newList(items, fmt.Sprintf("%s — exercises  (%s)", track, exercism.Legend()), w, h)
+	l := newList(items, fmt.Sprintf("%s — exercises", track), w, h)
 	return l
 }
 
 func newActionList(cfg *config.Config, track string, ex exercism.Exercise, w, h int) list.Model {
-	downloaded := exercism.Downloaded(cfg, track, ex.Slug)
-	items := actionsFor(ex.Status, downloaded)
-	title := fmt.Sprintf("%s %s  (%s)", ex.Status.Badge(), ex.Title, ex.Status.Label())
+	local := exercism.LocalStateOf(cfg, track, ex.Slug)
+	display := exercism.Display(ex.Status, local)
+	items := actionsFor(display, local)
+	title := fmt.Sprintf("%s %s  (%s)", display.Badge(), ex.Title, display.Label())
 	l := newList(items, title, w, h)
 	l.SetFilteringEnabled(false)
 	return l
 }
 
-func actionsFor(status exercism.Status, downloaded bool) []list.Item {
-	var first actionItem
+func actionsFor(display exercism.DisplayStatus, local exercism.LocalState) []list.Item {
+	var primary []list.Item
 	switch {
-	case status == exercism.NotStarted:
-		first = actionItem{"Start", "Download + open VS Code", ActionStart}
-	case !downloaded:
-		first = actionItem{"Continue", "Download + open VS Code", ActionStart}
+	case local == exercism.NotOnDisk && display == exercism.DNotStarted:
+		primary = []list.Item{actionItem{"Start", "Download + open VS Code", ActionStart}}
+	case local == exercism.NotOnDisk:
+		// Server-started but nothing local: continue downloads the stub.
+		primary = []list.Item{actionItem{"Continue", "Download stub + open VS Code", ActionStart}}
 	default:
-		first = actionItem{"Continue", "Open in VS Code", ActionOpen}
+		primary = []list.Item{actionItem{"Continue", "Open in VS Code", ActionOpen}}
 	}
-	return []list.Item{
-		first,
+
+	rest := []list.Item{
 		actionItem{"Run tests", "Run the exercise's tests", ActionTest},
+		actionItem{"Pause & sync", "Commit work-in-progress + push", ActionPause},
 		actionItem{"Submit", "Test, submit, commit + push", ActionSubmit},
 		actionItem{"Restart", "Re-download stubs (overwrites)", ActionRestart},
 		actionItem{"Open in browser", "Open the exercise/solution page", ActionWeb},
 	}
+	return append(primary, rest...)
 }
