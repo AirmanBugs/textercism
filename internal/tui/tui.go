@@ -52,6 +52,7 @@ type model struct {
 	status   string         // transient status line on the action screen
 
 	pane         paneMode // what the right pane shows: instructions or test output
+	paneFocused  bool     // true when the right pane (not the action list) has focus
 	instructions string   // rendered instructions (cached for the selected exercise)
 	testOutput   string   // captured + rendered test output
 
@@ -107,7 +108,7 @@ func Run(cfg *config.Config, backend sync.Backend, startTrack string) error {
 		m.screen = screenTracks
 	}
 
-	prog := tea.NewProgram(m, tea.WithAltScreen())
+	prog := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	final, err := prog.Run()
 	if err != nil {
 		return err
@@ -135,10 +136,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case testDoneMsg:
-		// Tests finished: show output in the right pane.
+		// Tests finished: show output in the right pane and focus it so the user
+		// can scroll the results immediately.
 		m.status = msg.status
 		m.testOutput = msg.rendered
 		m.pane = paneTestOutput
+		m.paneFocused = true
 		if m.screen == screenActions {
 			m.viewport.SetContent(m.paneContent())
 			m.viewport.GotoTop()
@@ -161,6 +164,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.MouseMsg:
+		// Trackpad/wheel scrolls the right pane on the action screen.
+		if m.screen == screenActions {
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		// Most keypresses clear a stale status line (but not pane scrolling).
 		switch msg.String() {
@@ -177,27 +189,40 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "q", "esc":
 			return m.goBack()
-		case "enter":
-			return m.choose()
 		}
 
-		// On the action screen, PgUp/PgDn (and ctrl+u/d) scroll the right pane;
-		// "i" switches the pane back to instructions from test output; arrow keys
-		// drive the action list.
 		if m.screen == screenActions {
 			switch msg.String() {
-			case "pgup", "pgdown", "ctrl+u", "ctrl+d":
-				var cmd tea.Cmd
-				m.viewport, cmd = m.viewport.Update(msg)
-				return m, cmd
+			case "tab":
+				// Toggle focus between the action list and the right pane.
+				m.paneFocused = !m.paneFocused
+				return m, nil
 			case "i":
 				if m.pane == paneTestOutput {
 					m.pane = paneInstructions
+					m.paneFocused = false
 					m.viewport.SetContent(m.paneContent())
 					m.viewport.GotoTop()
 					return m, nil
 				}
+			case "pgup", "pgdown", "ctrl+u", "ctrl+d":
+				// Page keys always scroll the pane regardless of focus.
+				var cmd tea.Cmd
+				m.viewport, cmd = m.viewport.Update(msg)
+				return m, cmd
 			}
+
+			// When the pane is focused, arrows/j/k scroll it; otherwise they (and
+			// Enter) drive the action list.
+			if m.paneFocused {
+				var cmd tea.Cmd
+				m.viewport, cmd = m.viewport.Update(msg)
+				return m, cmd
+			}
+		}
+
+		if msg.String() == "enter" {
+			return m.choose()
 		}
 	}
 
@@ -250,6 +275,8 @@ func (m *model) paneContent() string {
 var (
 	footerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	statusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	focusBar    = lipgloss.NewStyle().Foreground(lipgloss.Color("6")) // cyan
+	dimBar      = lipgloss.NewStyle().Foreground(lipgloss.Color("8")) // grey
 )
 
 func (m *model) View() string {
@@ -257,20 +284,44 @@ func (m *model) View() string {
 		return m.list.View()
 	}
 
-	// Action screen: actions + right pane, side by side (or stacked when narrow).
-	hint := "↑/↓ select · enter run · PgUp/PgDn scroll · q back"
-	if m.pane == paneTestOutput {
-		hint = "↑/↓ select · enter run · PgUp/PgDn scroll · i instructions · q back"
+	// Footer reflects what the keys do given the current focus.
+	var hint string
+	if m.paneFocused {
+		hint = "↑/↓ scroll · tab actions · i instructions · q back"
+	} else {
+		hint = "↑/↓ select · enter run · tab scroll pane · q back"
 	}
 	line := footerStyle.Render(hint)
 	if m.status != "" {
 		line = statusStyle.Render(m.status) + "  " + line
 	}
+
 	if m.stacked {
 		return m.list.View() + "\n" + m.viewport.View() + "\n" + line
 	}
-	body := lipgloss.JoinHorizontal(lipgloss.Top, m.list.View(), "  ", m.viewport.View())
+
+	// A thin vertical bar between the panes, colored to show which has focus.
+	bar := m.focusGutter()
+	body := lipgloss.JoinHorizontal(lipgloss.Top, m.list.View(), bar, m.viewport.View())
 	return body + "\n" + line
+}
+
+// focusGutter is the column between the action list and the pane; it's cyan on
+// the side that currently has focus, so it's obvious which arrows will move.
+func (m *model) focusGutter() string {
+	h := m.viewport.Height
+	if h < 1 {
+		h = 1
+	}
+	left, right := focusBar, dimBar
+	if m.paneFocused {
+		left, right = dimBar, focusBar
+	}
+	rows := make([]string, h)
+	for i := range rows {
+		rows[i] = left.Render("│") + right.Render("│")
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
 // --- transitions ---
@@ -337,6 +388,7 @@ func (m *model) enterActions(ex exercism.Exercise) tea.Cmd {
 	m.selected = ex
 	m.status = ""
 	m.pane = paneInstructions
+	m.paneFocused = false
 	m.testOutput = ""
 	m.list = newActionList(m.cfg, m.track, ex, m.showSync, m.width, m.height-1)
 	m.viewport = viewport.New(m.width, m.height)

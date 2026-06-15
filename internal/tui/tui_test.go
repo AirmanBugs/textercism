@@ -34,6 +34,8 @@ func send(m *model, key string) *model {
 		msg = tea.KeyMsg{Type: tea.KeyDown}
 	case "q":
 		msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}}
+	case "tab":
+		msg = tea.KeyMsg{Type: tea.KeyTab}
 	}
 	updated, _ := m.Update(msg)
 	return updated.(*model)
@@ -83,6 +85,23 @@ func TestBackNavigation(t *testing.T) {
 func sizeMsg(m *model, w, h int) *model {
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
 	return updated.(*model)
+}
+
+func TestTabTogglesPaneFocus(t *testing.T) {
+	m := newTestModel()
+	m = sizeMsg(m, 120, 30)
+	m = send(m, "enter") // -> action screen, list focused
+	if m.paneFocused {
+		t.Fatalf("expected list focused on entering action screen")
+	}
+	m = send(m, "tab")
+	if !m.paneFocused {
+		t.Fatalf("expected pane focused after tab")
+	}
+	m = send(m, "tab")
+	if m.paneFocused {
+		t.Fatalf("expected focus back on the list after second tab")
+	}
 }
 
 func TestActionScreenLayout(t *testing.T) {

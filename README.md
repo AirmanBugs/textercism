@@ -82,7 +82,8 @@ Merged, that gives:
   avoiding the multi-root workspace crash).
 - **Instructions** render in the terminal via [Glamour](https://github.com/charmbracelet/glamour):
   selecting an exercise shows its rendered instructions in a pane **beside the action
-  list** (stacked on narrow terminals; PgUp/PgDn scrolls them). Not-yet-downloaded
+  list** (stacked on narrow terminals). Scroll the pane with the trackpad/wheel, or
+  press **Tab** to focus it and use ↑/↓. Not-yet-downloaded
   exercises are fetched automatically so the full instructions appear. `textercism
   read <track> <ex>` also prints the rendered README to stdout. The `web` command
   opens the exercise on exercism.org in a browser.
