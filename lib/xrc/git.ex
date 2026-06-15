@@ -13,12 +13,25 @@ defmodule Xrc.Git do
     git_ok?(root, ["diff", "--quiet"]) and git_ok?(root, ["diff", "--cached", "--quiet"])
   end
 
-  @doc "Fast-forward pull. Returns :ok | {:error, output}."
+  @doc """
+  Fast-forward pull to sync progress from other devices. Returns :ok on success
+  or when the branch simply has no upstream to pull from (nothing to sync).
+  Returns {:error, output} only on a real failure (e.g. non-fast-forward).
+  """
   def pull_ff(%Config{repo_root: root}) do
-    case git(root, ["pull", "--ff-only"]) do
-      {_out, 0} -> :ok
-      {out, _} -> {:error, out}
+    if has_upstream?(root) do
+      case git(root, ["pull", "--ff-only"]) do
+        {_out, 0} -> :ok
+        {out, _} -> {:error, out}
+      end
+    else
+      :ok
     end
+  end
+
+  defp has_upstream?(root) do
+    {_out, code} = git(root, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+    code == 0
   end
 
   @doc "True if a prior `\"<track>: complete <exercise>\"` commit exists."
