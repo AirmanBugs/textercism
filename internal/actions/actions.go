@@ -110,6 +110,16 @@ func openEditor(cfg *config.Config, track, exercise string) {
 	default:
 		fail(err.Error())
 	}
+
+	// Show the instructions in the browser, where they render properly and can sit
+	// beside the editor window (VS Code's CLI can't arrange a README pane).
+	OpenURL(instructionsURL(track, exercise))
+}
+
+// instructionsURL is the exercise's instructions page on exercism.org. The URL
+// is deterministic, so no API call is needed.
+func instructionsURL(track, exercise string) string {
+	return fmt.Sprintf("https://exercism.org/tracks/%s/exercises/%s", track, exercise)
 }
 
 // Test runs the exercise's tests, streaming output.

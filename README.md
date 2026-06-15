@@ -40,9 +40,9 @@ xrc                       # interactive: pick a track, then an exercise, then an
 xrc <track>               # interactive: jump straight to a track's exercises
 xrc tracks                # list tracks with join state + progress
 xrc list <track>          # list exercises with status badges
-xrc start <track> <ex>    # download + open in VS Code (single window: README + solution)
+xrc start <track> <ex>    # download + open solution in VS Code, instructions in browser
 xrc restart <track> <ex>  # re-download stubs (overwrites) + open
-xrc open <track> <ex>     # open in VS Code (downloads first if missing)
+xrc open <track> <ex>     # open solution in VS Code + instructions in browser (downloads if missing)
 xrc test <track> <ex>     # run the track's tests (mix test on elixir, else exercism test)
 xrc submit <track> <ex>   # test, submit, then commit + push ("<track>: complete <ex>")
 xrc pause <track> <ex>    # commit work-in-progress + push (sync drafts across devices)
@@ -84,7 +84,10 @@ back. When you finally **Submit**, any `wip` commits are squashed into the singl
 - **Start/continue** runs `git pull --ff-only` (requires a clean tree) so progress
   syncs from other devices before you work, then downloads into the repo and opens a
   **single-folder** VS Code window — one language server per window, avoiding the
-  multi-root workspace crash.
+  multi-root workspace crash. The exercise's instructions open in the browser
+  (exercism.org), where they render properly and can sit beside the editor. VS Code
+  1.124's `code` CLI has no `--command` flag, so xrc can't arrange a README pane
+  inside the editor — the browser is the reliable place for instructions.
 - **Submit** runs tests, copies the exercise into the exercism workspace, runs
   `exercism submit`, then commits and pushes. A prior `"<track>: complete <ex>"`
   commit triggers a resubmit confirmation.
