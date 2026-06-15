@@ -45,18 +45,36 @@ xrc restart <track> <ex>  # re-download stubs (overwrites) + open
 xrc open <track> <ex>     # open in VS Code (downloads first if missing)
 xrc test <track> <ex>     # run the track's tests (mix test on elixir, else exercism test)
 xrc submit <track> <ex>   # test, submit, then commit + push ("<track>: complete <ex>")
+xrc pause <track> <ex>    # commit work-in-progress + push (sync drafts across devices)
 xrc web <track> <ex>      # open the exercise/solution page in the browser
 ```
 
 ### Status legend
 
 ```
-● not started   ◐ in progress   ✓ completed   ★ published   🔒 locked
+● not started   ◌ started (server)   ◔ started   ◐ in progress   ✓ completed   ★ published   🔒 locked
 ```
 
-The `⬇` marker next to an exercise means it's downloaded into this repo locally.
-Status itself always comes from the Exercism API, so it stays correct across devices
-even before you download an exercise here.
+Status combines two sources:
+
+- **Exercism API** (the server) — knows whether you've *started* (a solution record
+  exists), *completed*, or *published*. But Exercism only stores code you've
+  **submitted**, not drafts.
+- **Local disk** — whether the exercise is downloaded here (`⬇`) and whether its
+  solution has been **edited** away from the pristine stub.
+
+Merged, that gives:
+
+- `◌ started (server)` — Exercism says you started it, but there's nothing local to
+  continue (e.g. started on another machine and not yet synced). **Continue** will
+  download the stub.
+- `◔ started` — downloaded here, stub untouched.
+- `◐ in progress` — downloaded here with real edits (a partial solution).
+
+To carry a partial solution between machines, use **Pause & sync**: it commits a
+`"<track>: wip <ex>"` snapshot and pushes. On another device, **Continue** pulls it
+back. When you finally **Submit**, any `wip` commits are squashed into the single
+`"<track>: complete <ex>"` commit.
 
 ## How it fits together
 
