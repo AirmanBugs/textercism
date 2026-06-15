@@ -4,68 +4,30 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
-	"github.com/AirmanBugs/exercism/xrc/internal/config"
+	"github.com/AirmanBugs/textercism/internal/config"
 )
 
-// Download fetches an exercise via the official CLI, then moves it from the
-// exercism workspace into the repo at <repo>/<track>/<exercise>. Returns the
-// repo dir. Mirrors the old start-exercise.sh move logic.
+// Download fetches an exercise via the official CLI into the Exercism workspace
+// (which is also textercism's storage), captures the pristine stub for later
+// edit detection, and returns the exercise dir.
 func Download(cfg *config.Config, track, exercise string) (string, error) {
 	out, err := exec.Command("exercism", "download",
 		"--track="+track, "--exercise="+exercise, "--force").CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("exercism download failed: %s", strings.TrimSpace(string(out)))
 	}
-	dir, err := moveIntoRepo(cfg, track, exercise, string(out))
-	if err != nil {
-		return "", err
+
+	dir := ExerciseDir(cfg, track, exercise)
+	if !dirExists(dir) {
+		return "", fmt.Errorf("exercise not found at %s after download:\n%s", dir, strings.TrimSpace(string(out)))
 	}
-	// Capture the pristine stub right after download (solution == stub now) so we
-	// can later tell whether the user has edited the solution.
-	if err := captureStub(cfg, track, exercise); err != nil {
-		// Non-fatal: stub capture only powers the edited/unedited distinction.
-		return dir, nil
-	}
+
+	// Capture the pristine stub (solution == stub right after download) so we can
+	// later tell whether the user has edited the solution. Non-fatal on failure.
+	_ = captureStub(cfg, track, exercise)
 	return dir, nil
-}
-
-// The CLI prints "Downloaded to\n<path>"; move that dir into the repo.
-func moveIntoRepo(cfg *config.Config, track, exercise, output string) (string, error) {
-	target := ExerciseDir(cfg, track, exercise)
-	downloaded := parseDownloadedPath(output)
-
-	switch {
-	case downloaded == "" && dirExists(target):
-		return target, nil
-	case downloaded != "" && downloaded == target:
-		return target, nil
-	case downloaded != "" && dirExists(downloaded):
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return "", err
-		}
-		_ = os.RemoveAll(target)
-		if err := os.Rename(downloaded, target); err != nil {
-			return "", err
-		}
-		return target, nil
-	case dirExists(target):
-		return target, nil
-	default:
-		return "", fmt.Errorf("could not locate downloaded exercise from CLI output:\n%s", output)
-	}
-}
-
-func parseDownloadedPath(output string) string {
-	lines := strings.Split(output, "\n")
-	for i, line := range lines {
-		if strings.Contains(line, "Downloaded to") && i+1 < len(lines) {
-			return strings.TrimSpace(lines[i+1])
-		}
-	}
-	return ""
 }
 
 // Test runs the exercise's tests, streaming output to stdout/stderr. Elixir uses
@@ -89,31 +51,21 @@ func testCommand(track string) (string, []string) {
 	return "exercism", []string{"test"}
 }
 
-// Submit copies the exercise into the exercism workspace and runs `exercism
-// submit` on its solution files, then removes the copy. Mirrors end-exercise.sh.
+// Submit runs `exercism submit` on the exercise's solution files in place. The
+// exercise already lives in the Exercism workspace, so no copy is needed.
 func Submit(cfg *config.Config, track, exercise string) (string, error) {
-	repoDir := ExerciseDir(cfg, track, exercise)
-	if !dirExists(repoDir) {
-		return "", fmt.Errorf("exercise not downloaded: %s", repoDir)
+	dir := ExerciseDir(cfg, track, exercise)
+	if !dirExists(dir) {
+		return "", fmt.Errorf("exercise not downloaded: %s", dir)
 	}
 	files := SolutionFiles(cfg, track, exercise)
 	if len(files) == 0 {
 		return "", fmt.Errorf("no solution files listed in .exercism/config.json for %s", exercise)
 	}
 
-	wsDir := filepath.Join(cfg.Workspace, track, exercise)
-	if err := os.MkdirAll(filepath.Dir(wsDir), 0o755); err != nil {
-		return "", err
-	}
-	_ = os.RemoveAll(wsDir)
-	if err := copyDir(repoDir, wsDir); err != nil {
-		return "", err
-	}
-	defer os.RemoveAll(wsDir)
-
 	args := append([]string{"submit"}, files...)
 	cmd := exec.Command("exercism", args...)
-	cmd.Dir = wsDir
+	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("exercism submit failed: %s", strings.TrimSpace(string(out)))
@@ -124,26 +76,4 @@ func Submit(cfg *config.Config, track, exercise string) (string, error) {
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
-}
-
-// copyDir recursively copies src to dst, preserving file modes.
-func copyDir(src, dst string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(dst, rel)
-		if info.IsDir() {
-			return os.MkdirAll(target, info.Mode())
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(target, data, info.Mode())
-	})
 }

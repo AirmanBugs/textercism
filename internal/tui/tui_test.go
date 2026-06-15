@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AirmanBugs/exercism/xrc/internal/config"
-	"github.com/AirmanBugs/exercism/xrc/internal/exercism"
+	"github.com/AirmanBugs/textercism/internal/config"
+	"github.com/AirmanBugs/textercism/internal/exercism"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -13,7 +13,7 @@ import (
 // newTestModel builds a model seeded with exercises on the exercises screen,
 // bypassing any network calls.
 func newTestModel() *model {
-	cfg := &config.Config{RepoRoot: "/tmp/does-not-exist"}
+	cfg := &config.Config{Workspace: "/tmp/does-not-exist"}
 	exs := []exercism.Exercise{
 		{Slug: "lasagna", Title: "Lasagna", Difficulty: "easy", Status: exercism.Completed, IsUnlocked: true},
 		{Slug: "two-fer", Title: "Two Fer", Difficulty: "easy", Status: exercism.NotStarted, IsUnlocked: true},
@@ -78,31 +78,43 @@ func TestBackNavigation(t *testing.T) {
 	}
 }
 
+func hasAction(items []list.Item, kind ActionKind) bool {
+	for _, it := range items {
+		if it.(actionItem).kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
 func TestActionsForStatus(t *testing.T) {
 	// Not started, nothing local -> first action is Start.
-	items := actionsFor(exercism.DNotStarted, exercism.NotOnDisk)
+	items := actionsFor(exercism.DNotStarted, exercism.NotOnDisk, false)
 	if got := items[0].(actionItem); got.kind != ActionStart {
 		t.Fatalf("not-started first action = %v, want Start", got.kind)
 	}
 	// Server-started but nothing local -> Continue that downloads (ActionStart).
-	items = actionsFor(exercism.DStartedServer, exercism.NotOnDisk)
+	items = actionsFor(exercism.DStartedServer, exercism.NotOnDisk, false)
 	if got := items[0].(actionItem); got.kind != ActionStart {
 		t.Fatalf("server-started/no-disk first action = %v, want Start(download)", got.kind)
 	}
 	// Downloaded with edits -> first action is Open (continue without re-download).
-	items = actionsFor(exercism.DInProgress, exercism.OnDiskEdited)
+	items = actionsFor(exercism.DInProgress, exercism.OnDiskEdited, false)
 	if got := items[0].(actionItem); got.kind != ActionOpen {
 		t.Fatalf("downloaded first action = %v, want Open", got.kind)
 	}
-	// Pause action is always present.
-	hasPause := false
-	for _, it := range items {
-		if it.(actionItem).kind == ActionPause {
-			hasPause = true
-		}
+}
+
+func TestPauseActionGatedOnSync(t *testing.T) {
+	// Local-only (showSync=false): no Pause action offered.
+	noSync := actionsFor(exercism.DInProgress, exercism.OnDiskEdited, false)
+	if hasAction(noSync, ActionPause) {
+		t.Fatalf("Pause should be hidden when no sync backend is configured")
 	}
-	if !hasPause {
-		t.Fatalf("expected a Pause action in the menu")
+	// With a sync backend (showSync=true): Pause is offered.
+	withSync := actionsFor(exercism.DInProgress, exercism.OnDiskEdited, true)
+	if !hasAction(withSync, ActionPause) {
+		t.Fatalf("Pause should be offered when a sync backend is configured")
 	}
 }
 

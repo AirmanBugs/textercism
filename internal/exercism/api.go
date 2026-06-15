@@ -11,7 +11,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/AirmanBugs/exercism/xrc/internal/config"
+	"github.com/AirmanBugs/textercism/internal/config"
 )
 
 // Track is a v2 track summary.
@@ -141,7 +141,7 @@ func (c *Client) get(path string, out any) error {
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.cfg.Token)
-	req.Header.Set("User-Agent", "xrc (exercism personal tool)")
+	req.Header.Set("User-Agent", "textercism (exercism personal tool)")
 
 	resp, err := c.http.Do(req)
 	if err != nil {

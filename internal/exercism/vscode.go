@@ -5,7 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/AirmanBugs/exercism/xrc/internal/config"
+	"github.com/AirmanBugs/textercism/internal/config"
 )
 
 // ErrCodeNotFound means the `code` CLI isn't on PATH.

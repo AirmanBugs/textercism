@@ -1,5 +1,5 @@
-// Command xrc is an interactive CLI for picking, solving, and submitting
-// Exercism exercises, synced through this git repo.
+// Command textercism is an interactive CLI for picking, solving, and submitting
+// Exercism exercises.
 package main
 
 import (
@@ -8,26 +8,27 @@ import (
 	"os"
 	"strings"
 
-	"github.com/AirmanBugs/exercism/xrc/internal/actions"
-	"github.com/AirmanBugs/exercism/xrc/internal/config"
-	"github.com/AirmanBugs/exercism/xrc/internal/exercism"
-	"github.com/AirmanBugs/exercism/xrc/internal/tui"
+	"github.com/AirmanBugs/textercism/internal/actions"
+	"github.com/AirmanBugs/textercism/internal/config"
+	"github.com/AirmanBugs/textercism/internal/exercism"
+	"github.com/AirmanBugs/textercism/internal/sync"
+	"github.com/AirmanBugs/textercism/internal/tui"
 )
 
-const usage = `xrc — Exercism workflow CLI
+const usage = `textercism — a text UI for Exercism
 
 Usage:
-  xrc                       interactive: pick a track, then an exercise, then an action
-  xrc <track>               interactive: jump to a track's exercises
-  xrc tracks                list tracks with join state + progress
-  xrc list <track>          list exercises with status
-  xrc start <track> <ex>    download + open in VS Code
-  xrc restart <track> <ex>  re-download stubs (overwrites) + open
-  xrc open <track> <ex>     open in VS Code (downloads first if missing)
-  xrc test <track> <ex>     run the track's tests
-  xrc submit <track> <ex>   test, submit, commit + push
-  xrc pause <track> <ex>    commit work-in-progress + push (sync across devices)
-  xrc web <track> <ex>      open the exercise/solution page in the browser
+  textercism                       interactive: pick a track, then an exercise, then an action
+  textercism <track>               interactive: jump to a track's exercises
+  textercism tracks                list tracks with join state + progress
+  textercism list <track>          list exercises with status
+  textercism start <track> <ex>    download + open solution in VS Code, instructions in browser
+  textercism restart <track> <ex>  re-download stub (overwrites) + open
+  textercism open <track> <ex>     open solution + instructions (downloads/syncs if missing)
+  textercism test <track> <ex>     run the track's tests
+  textercism submit <track> <ex>   test, then submit to Exercism
+  textercism pause <track> <ex>    save draft to your sync backend (when configured)
+  textercism web <track> <ex>      open the exercise/solution page in the browser
 `
 
 func main() {
@@ -37,10 +38,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Local-only backend for now; future sync backends are selected here.
+	backend := sync.NewLocal(cfg)
+
 	args := os.Args[1:]
 	switch {
 	case len(args) == 0:
-		runTUI(cfg, "")
+		runTUI(cfg, backend, "")
 
 	case args[0] == "tracks" && len(args) == 1:
 		printTracks(cfg)
@@ -48,23 +52,23 @@ func main() {
 		printExercises(cfg, args[1])
 
 	case args[0] == "start" && len(args) == 3:
-		actions.Start(cfg, args[1], args[2], false)
+		actions.Start(cfg, backend, args[1], args[2], false)
 	case args[0] == "restart" && len(args) == 3:
-		actions.Start(cfg, args[1], args[2], true)
+		actions.Start(cfg, backend, args[1], args[2], true)
 	case args[0] == "open" && len(args) == 3:
-		actions.Open(cfg, args[1], args[2])
+		actions.Open(cfg, backend, args[1], args[2])
 	case args[0] == "test" && len(args) == 3:
 		actions.Test(cfg, args[1], args[2])
 	case args[0] == "submit" && len(args) == 3:
 		actions.Submit(cfg, args[1], args[2], promptConfirm)
 	case args[0] == "pause" && len(args) == 3:
-		actions.Pause(cfg, args[1], args[2])
+		actions.Pause(cfg, backend, args[1], args[2])
 	case args[0] == "web" && len(args) == 3:
 		actions.Web(cfg, args[1], args[2])
 
-	// `xrc <track>` -> interactive exercises for that track.
+	// `textercism <track>` -> interactive exercises for that track.
 	case len(args) == 1:
-		runTUI(cfg, args[0])
+		runTUI(cfg, backend, args[0])
 
 	default:
 		fmt.Print(usage)
@@ -74,29 +78,29 @@ func main() {
 
 // runTUI launches the interactive UI, then performs the chosen action (outside
 // the alt-screen so its output goes to the real terminal).
-func runTUI(cfg *config.Config, startTrack string) {
-	action, err := tui.Run(cfg, startTrack)
+func runTUI(cfg *config.Config, backend sync.Backend, startTrack string) {
+	action, err := tui.Run(cfg, startTrack, backend.SyncsAcrossDevices())
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "✘ "+err.Error())
 		os.Exit(1)
 	}
-	perform(cfg, action)
+	perform(cfg, backend, action)
 }
 
-func perform(cfg *config.Config, a tui.Action) {
+func perform(cfg *config.Config, backend sync.Backend, a tui.Action) {
 	switch a.Kind {
 	case tui.ActionStart:
-		actions.Start(cfg, a.Track, a.Exercise, false)
+		actions.Start(cfg, backend, a.Track, a.Exercise, false)
 	case tui.ActionRestart:
-		actions.Start(cfg, a.Track, a.Exercise, true)
+		actions.Start(cfg, backend, a.Track, a.Exercise, true)
 	case tui.ActionOpen:
-		actions.Open(cfg, a.Track, a.Exercise)
+		actions.Open(cfg, backend, a.Track, a.Exercise)
 	case tui.ActionTest:
 		actions.Test(cfg, a.Track, a.Exercise)
 	case tui.ActionSubmit:
 		actions.Submit(cfg, a.Track, a.Exercise, promptConfirm)
 	case tui.ActionPause:
-		actions.Pause(cfg, a.Track, a.Exercise)
+		actions.Pause(cfg, backend, a.Track, a.Exercise)
 	case tui.ActionWeb:
 		actions.Web(cfg, a.Track, a.Exercise)
 	case tui.ActionNone:

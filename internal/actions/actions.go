@@ -3,13 +3,14 @@
 package actions
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
 	"runtime"
-	"strings"
 
-	"github.com/AirmanBugs/exercism/xrc/internal/config"
-	"github.com/AirmanBugs/exercism/xrc/internal/exercism"
+	"github.com/AirmanBugs/textercism/internal/config"
+	"github.com/AirmanBugs/textercism/internal/exercism"
+	"github.com/AirmanBugs/textercism/internal/sync"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -30,17 +31,38 @@ type ConfirmFunc func(question string) bool
 func AutoYes(string) bool { return true }
 
 // Start downloads (if needed) and opens an exercise in VS Code. force re-downloads stubs.
-func Start(cfg *config.Config, track, exercise string, force bool) {
-	if !syncBeforeWork(cfg) {
-		return
-	}
-
+func Start(cfg *config.Config, backend sync.Backend, track, exercise string, force bool) {
 	if exercism.Downloaded(cfg, track, exercise) && !force {
 		info("Already downloaded; continuing.")
 		openEditor(cfg, track, exercise)
 		return
 	}
+	downloadAndOpen(cfg, track, exercise)
+}
 
+// Open continues an exercise: if it's not on this machine, try the sync backend
+// to recover a draft from another device, otherwise download a fresh stub.
+func Open(cfg *config.Config, backend sync.Backend, track, exercise string) {
+	if exercism.Downloaded(cfg, track, exercise) {
+		openEditor(cfg, track, exercise)
+		return
+	}
+
+	ref := sync.DraftRef{Track: track, Exercise: exercise}
+	err := backend.Pull(ref, exercism.ExerciseDir(cfg, track, exercise))
+	switch {
+	case err == nil:
+		ok("Recovered draft from " + backend.Name() + " sync.")
+		openEditor(cfg, track, exercise)
+	case errors.Is(err, sync.ErrNoDraft):
+		info("Nothing to continue — downloading the stub.")
+		downloadAndOpen(cfg, track, exercise)
+	default:
+		fail("Sync pull failed: " + err.Error())
+	}
+}
+
+func downloadAndOpen(cfg *config.Config, track, exercise string) {
 	info(fmt.Sprintf("Downloading %s/%s ...", track, exercise))
 	dir, err := exercism.Download(cfg, track, exercise)
 	if err != nil {
@@ -51,53 +73,25 @@ func Start(cfg *config.Config, track, exercise string, force bool) {
 	openEditor(cfg, track, exercise)
 }
 
-// Open continues an exercise: pull first (recover WIP synced from another
-// device), open it if present, otherwise download the stub. This is what makes
-// "continue" work for a server-started exercise that isn't on this machine.
-func Open(cfg *config.Config, track, exercise string) {
-	if exercism.Downloaded(cfg, track, exercise) {
-		openEditor(cfg, track, exercise)
+// Pause saves the exercise's current draft to the sync backend so it can be
+// resumed on another device. With the local-only backend there's nothing to
+// sync to, so callers should hide this action (see backend.SyncsAcrossDevices).
+func Pause(cfg *config.Config, backend sync.Backend, track, exercise string) {
+	if !backend.SyncsAcrossDevices() {
+		info("No sync backend configured — drafts stay on this machine.")
 		return
 	}
-	// Not on disk: it may be a WIP committed on another device, or a fresh
-	// server-started exercise. Sync, then re-check before falling back to download.
-	if !syncBeforeWork(cfg) {
-		return
-	}
-	if exercism.Downloaded(cfg, track, exercise) {
-		ok("Recovered work-in-progress from sync.")
-		openEditor(cfg, track, exercise)
-		return
-	}
-	info("Nothing local to continue — downloading the stub.")
-	dir, err := exercism.Download(cfg, track, exercise)
-	if err != nil {
-		fail(err.Error())
-		return
-	}
-	ok("Downloaded to " + dir)
-	openEditor(cfg, track, exercise)
-}
-
-// Pause commits the exercise's work-in-progress and pushes it, so it can be
-// resumed on another device.
-func Pause(cfg *config.Config, track, exercise string) {
 	if !exercism.Downloaded(cfg, track, exercise) {
-		fail("Exercise not downloaded; nothing to pause.")
+		fail("Exercise not downloaded; nothing to sync.")
 		return
 	}
-	info("Saving work-in-progress ...")
-	res, err := exercism.WipCommitAndPush(cfg, track, exercise)
-	if err != nil {
-		fail(err.Error())
+	info("Syncing draft via " + backend.Name() + " ...")
+	ref := sync.DraftRef{Track: track, Exercise: exercise}
+	if err := backend.Push(ref, exercism.ExerciseDir(cfg, track, exercise)); err != nil {
+		fail("Sync push failed: " + err.Error())
 		return
 	}
-	switch res {
-	case exercism.CommitOK:
-		ok(fmt.Sprintf("Synced WIP: %s: wip %s", track, exercise))
-	case exercism.CommitNoChanges:
-		info("No changes to sync.")
-	}
+	ok(fmt.Sprintf("Draft synced: %s/%s", track, exercise))
 }
 
 func openEditor(cfg *config.Config, track, exercise string) {
@@ -136,15 +130,11 @@ func Test(cfg *config.Config, track, exercise string) {
 	ok("Tests passed.")
 }
 
-// Submit tests, submits, then commits + pushes. confirm gates resubmit/commit.
+// Submit runs tests then submits to Exercism. Completed work persists on
+// Exercism (the source of truth) — textercism keeps no separate copy.
 func Submit(cfg *config.Config, track, exercise string, confirm ConfirmFunc) {
 	if !exercism.Downloaded(cfg, track, exercise) {
 		fail("Exercise not downloaded. Start it first.")
-		return
-	}
-	if exercism.AlreadyCompleted(cfg, track, exercise) &&
-		!confirm("This exercise was completed before. Resubmit?") {
-		info("Aborted.")
 		return
 	}
 
@@ -163,27 +153,7 @@ func Submit(cfg *config.Config, track, exercise string, confirm ConfirmFunc) {
 	if out != "" {
 		ok(out)
 	}
-	commit(cfg, track, exercise, confirm)
-}
-
-func commit(cfg *config.Config, track, exercise string, confirm ConfirmFunc) {
-	info("Committing to git ...")
-	res, err := exercism.CommitAndPush(cfg, track, exercise, func(stat string) bool {
-		fmt.Println("\nChanges to commit:\n" + stat)
-		return confirm("Commit and push these changes?")
-	})
-	if err != nil {
-		fail(err.Error())
-		return
-	}
-	switch res {
-	case exercism.CommitOK:
-		ok(fmt.Sprintf("Committed and pushed: %s: complete %s", track, exercise))
-	case exercism.CommitNoChanges:
-		info("No file changes to commit (submission still sent).")
-	case exercism.CommitAborted:
-		info("Commit aborted; nothing pushed.")
-	}
+	ok(fmt.Sprintf("Submitted %s/%s to Exercism.", track, exercise))
 }
 
 // Web opens the exercise's web page in the browser.
@@ -218,16 +188,4 @@ func OpenURL(url string) {
 	}
 	_ = exec.Command(cmd, url).Run()
 	ok("Opened " + url)
-}
-
-func syncBeforeWork(cfg *config.Config) bool {
-	if !exercism.GitClean(cfg) {
-		fail("Working tree has uncommitted changes. Commit or stash first.")
-		return false
-	}
-	if err := exercism.GitPullFF(cfg); err != nil {
-		fail("git pull --ff-only failed:\n" + strings.TrimSpace(err.Error()))
-		return false
-	}
-	return true
 }

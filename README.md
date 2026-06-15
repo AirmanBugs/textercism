@@ -1,11 +1,9 @@
-# xrc — Exercism workflow CLI
+# textercism — a text UI for Exercism
 
 An interactive CLI for picking, solving, and submitting [Exercism](https://exercism.org)
-exercises, synced through this git repo. Wraps the official `exercism` CLI for the
-supported operations (download / test / submit) and reads the unofficial v2 website
-API for per-exercise **status** (not-started / in-progress / completed / published / locked).
-
-Replaces the old `<track>/start-exercise.sh` and `<track>/end-exercise.sh` scripts.
+exercises. Wraps the official `exercism` CLI for the supported operations
+(download / test / submit) and reads the unofficial v2 website API for per-exercise
+**status** (not started / started / in progress / completed / published / locked).
 
 A Go program using [Bubble Tea](https://github.com/charmbracelet/bubbletea) for the
 interactive UI (arrow-key navigation, filtering).
@@ -13,40 +11,40 @@ interactive UI (arrow-key navigation, filtering).
 ## Requirements
 
 - Go (to build) — `brew install go`.
-- The official `exercism` CLI, configured (`exercism configure --token=...`). `xrc`
-  reads the token, workspace, and API base from `~/.config/exercism/user.json`.
-- `code` (VS Code) on `PATH` for the editor integration.
+- The official `exercism` CLI, configured (`exercism configure --token=...`).
+  textercism reuses the **token** and **workspace** from `~/.config/exercism/user.json` —
+  no separate config needed.
+- `code` (VS Code) on `PATH` for the editor integration (optional).
 
-`xrc` finds the repo from its own binary location (`<repo>/tooling/xrc`), so it works
-from any directory. Override with `XRC_REPO_ROOT` if needed.
+Exercises live in the Exercism CLI **workspace** (`~/Exercism` by default), so
+textercism works from any directory.
 
 ## Build
 
 ```sh
-cd tooling
-go build -o xrc .       # produces ./xrc
+go build -o textercism .       # produces ./textercism
 ```
 
-Put `tooling/xrc` on your `PATH` (or symlink it) to run `xrc` from anywhere, e.g.:
+Put it on your `PATH` (or symlink it) to run from anywhere, e.g.:
 
 ```sh
-ln -sf "$PWD/xrc" ~/.local/bin/xrc
+ln -sf "$PWD/textercism" ~/.local/bin/textercism
 ```
 
 ## Usage
 
 ```sh
-xrc                       # interactive: pick a track, then an exercise, then an action
-xrc <track>               # interactive: jump straight to a track's exercises
-xrc tracks                # list tracks with join state + progress
-xrc list <track>          # list exercises with status badges
-xrc start <track> <ex>    # download + open solution in VS Code, instructions in browser
-xrc restart <track> <ex>  # re-download stubs (overwrites) + open
-xrc open <track> <ex>     # open solution in VS Code + instructions in browser (downloads if missing)
-xrc test <track> <ex>     # run the track's tests (mix test on elixir, else exercism test)
-xrc submit <track> <ex>   # test, submit, then commit + push ("<track>: complete <ex>")
-xrc pause <track> <ex>    # commit work-in-progress + push (sync drafts across devices)
-xrc web <track> <ex>      # open the exercise/solution page in the browser
+textercism                       # interactive: pick a track, then an exercise, then an action
+textercism <track>               # interactive: jump straight to a track's exercises
+textercism tracks                # list tracks with join state + progress
+textercism list <track>          # list exercises with status badges
+textercism start <track> <ex>    # download + open solution in VS Code, instructions in browser
+textercism restart <track> <ex>  # re-download stub (overwrites) + open
+textercism open <track> <ex>     # open solution + instructions (downloads/syncs if missing)
+textercism test <track> <ex>     # run the track's tests (mix test on elixir, else exercism test)
+textercism submit <track> <ex>   # test, then submit to Exercism
+textercism pause <track> <ex>    # save draft to your sync backend (when configured)
+textercism web <track> <ex>      # open the exercise/solution page in the browser
 ```
 
 ### Status legend
@@ -59,35 +57,34 @@ Status combines two sources:
 
 - **Exercism API** (the server) — knows whether you've *started* (a solution record
   exists), *completed*, or *published*. But Exercism only stores code you've
-  **submitted**, not drafts.
-- **Local disk** — whether the exercise is downloaded here (`⬇`) and whether its
-  solution has been **edited** away from the pristine stub.
+  **submitted**, not in-progress drafts.
+- **Local disk** — whether the exercise is downloaded in the workspace (`⬇`) and
+  whether its solution has been **edited** away from the pristine stub.
 
 Merged, that gives:
 
 - `◌ started (server)` — Exercism says you started it, but there's nothing local to
-  continue (e.g. started on another machine and not yet synced). **Continue** will
-  download the stub.
+  continue (e.g. started on another machine). **Continue** downloads the stub (or
+  pulls your draft from a sync backend, if configured).
 - `◔ started` — downloaded here, stub untouched.
 - `◐ in progress` — downloaded here with real edits (a partial solution).
 
-To carry a partial solution between machines, use **Pause & sync**: it commits a
-`"<track>: wip <ex>"` snapshot and pushes. On another device, **Continue** pulls it
-back. When you finally **Submit**, any `wip` commits are squashed into the single
-`"<track>: complete <ex>"` commit.
-
 ## How it fits together
 
+- **Storage** is the Exercism CLI workspace (`~/Exercism`); exercises download there
+  and submit happens in place. Completed work lives on **Exercism** (the source of
+  truth) — textercism keeps no separate copy and re-fetches as needed.
 - **Status** is read-only from `https://exercism.org/api/v2` using the CLI token.
-  This API is unofficial/undocumented, so `xrc` parses it leniently and never relies
-  on undocumented *write* endpoints.
-- **Start/continue** runs `git pull --ff-only` (requires a clean tree) so progress
-  syncs from other devices before you work, then downloads into the repo and opens a
-  **single-folder** VS Code window — one language server per window, avoiding the
-  multi-root workspace crash. The exercise's instructions open in the browser
-  (exercism.org), where they render properly and can sit beside the editor. VS Code
-  1.124's `code` CLI has no `--command` flag, so xrc can't arrange a README pane
-  inside the editor — the browser is the reliable place for instructions.
-- **Submit** runs tests, copies the exercise into the exercism workspace, runs
-  `exercism submit`, then commits and pushes. A prior `"<track>: complete <ex>"`
-  commit triggers a resubmit confirmation.
+  This API is unofficial/undocumented, so textercism parses it leniently and never
+  relies on undocumented *write* endpoints.
+- **Start / continue** opens a **single-folder** VS Code window (one language server,
+  avoiding the multi-root workspace crash) and the instructions in the browser
+  (exercism.org), where they render properly beside the editor — VS Code's `code` CLI
+  can't arrange a README pane.
+- **Submit** runs the tests, then `exercism submit` in place.
+- **Drafts** (in-progress, unsubmitted code) are the only thing that needs syncing,
+  since Exercism doesn't store them. Cross-device sync is handled by a pluggable
+  **sync backend** behind a small interface (`internal/sync`). The default is
+  **local-only** (no cross-device sync; the "Pause & sync" action is hidden). Future
+  backends — a synced folder (Dropbox/iCloud/a Pi mount), ssh/scp to a personal
+  server, or git — slot in without touching the rest of the tool.

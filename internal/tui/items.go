@@ -3,7 +3,7 @@ package tui
 import (
 	"fmt"
 
-	"github.com/AirmanBugs/exercism/xrc/internal/exercism"
+	"github.com/AirmanBugs/textercism/internal/exercism"
 )
 
 // trackItem implements bubbles/list DefaultItem.

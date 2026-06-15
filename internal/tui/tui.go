@@ -1,14 +1,14 @@
 // Package tui is the interactive Bubble Tea front-end: pick a track, browse
 // exercises with status badges (arrow keys + filtering via bubbles/list), then
 // choose an action. The selected action is returned to main, which runs it
-// outside the alt-screen so test/git/editor output goes to the real terminal.
+// outside the alt-screen so test/editor output goes to the real terminal.
 package tui
 
 import (
 	"fmt"
 
-	"github.com/AirmanBugs/exercism/xrc/internal/config"
-	"github.com/AirmanBugs/exercism/xrc/internal/exercism"
+	"github.com/AirmanBugs/textercism/internal/config"
+	"github.com/AirmanBugs/textercism/internal/exercism"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -46,6 +46,8 @@ type model struct {
 	cfg    *config.Config
 	client *exercism.Client
 
+	showSync bool // whether to offer the "Pause & sync" action
+
 	screen screen
 	list   list.Model
 
@@ -60,13 +62,15 @@ type model struct {
 }
 
 // Run launches the interactive UI starting at the track picker. If startTrack is
-// non-empty it jumps straight to that track's exercises. Returns the chosen
-// Action (Kind ActionNone if the user quit without choosing).
-func Run(cfg *config.Config, startTrack string) (Action, error) {
+// non-empty it jumps straight to that track's exercises. showSync controls
+// whether the "Pause & sync" action is offered (off for the local-only backend).
+// Returns the chosen Action (Kind ActionNone if the user quit without choosing).
+func Run(cfg *config.Config, startTrack string, showSync bool) (Action, error) {
 	m := &model{
-		cfg:    cfg,
-		client: exercism.NewClient(cfg),
-		result: Action{Kind: ActionNone},
+		cfg:      cfg,
+		client:   exercism.NewClient(cfg),
+		showSync: showSync,
+		result:   Action{Kind: ActionNone},
 	}
 
 	if startTrack != "" {
@@ -176,7 +180,7 @@ func (m *model) choose() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.selected = it.ex
-		m.list = newActionList(m.cfg, m.track, it.ex, m.width, m.height-1)
+		m.list = newActionList(m.cfg, m.track, it.ex, m.showSync, m.width, m.height-1)
 		m.screen = screenActions
 		return m, nil
 
@@ -250,34 +254,38 @@ func newExerciseList(cfg *config.Config, track string, exs []exercism.Exercise, 
 	return l
 }
 
-func newActionList(cfg *config.Config, track string, ex exercism.Exercise, w, h int) list.Model {
+func newActionList(cfg *config.Config, track string, ex exercism.Exercise, showSync bool, w, h int) list.Model {
 	local := exercism.LocalStateOf(cfg, track, ex.Slug)
 	display := exercism.Display(ex.Status, local)
-	items := actionsFor(display, local)
+	items := actionsFor(display, local, showSync)
 	title := fmt.Sprintf("%s %s  (%s)", display.Badge(), ex.Title, display.Label())
 	l := newList(items, title, w, h)
 	l.SetFilteringEnabled(false)
 	return l
 }
 
-func actionsFor(display exercism.DisplayStatus, local exercism.LocalState) []list.Item {
-	var primary []list.Item
+func actionsFor(display exercism.DisplayStatus, local exercism.LocalState, showSync bool) []list.Item {
+	var items []list.Item
 	switch {
 	case local == exercism.NotOnDisk && display == exercism.DNotStarted:
-		primary = []list.Item{actionItem{"Start", "Download + open VS Code", ActionStart}}
+		items = append(items, actionItem{"Start", "Download + open VS Code", ActionStart})
 	case local == exercism.NotOnDisk:
 		// Server-started but nothing local: continue downloads the stub.
-		primary = []list.Item{actionItem{"Continue", "Download stub + open VS Code", ActionStart}}
+		items = append(items, actionItem{"Continue", "Download stub + open VS Code", ActionStart})
 	default:
-		primary = []list.Item{actionItem{"Continue", "Open in VS Code", ActionOpen}}
+		items = append(items, actionItem{"Continue", "Open in VS Code", ActionOpen})
 	}
 
-	rest := []list.Item{
+	items = append(items,
 		actionItem{"Run tests", "Run the exercise's tests", ActionTest},
-		actionItem{"Pause & sync", "Commit work-in-progress + push", ActionPause},
-		actionItem{"Submit", "Test, submit, commit + push", ActionSubmit},
-		actionItem{"Restart", "Re-download stubs (overwrites)", ActionRestart},
-		actionItem{"Open in browser", "Open the exercise/solution page", ActionWeb},
+		actionItem{"Submit", "Test, then submit to Exercism", ActionSubmit},
+	)
+	if showSync {
+		items = append(items, actionItem{"Pause & sync", "Save draft to your sync backend", ActionPause})
 	}
-	return append(primary, rest...)
+	items = append(items,
+		actionItem{"Restart", "Re-download stub (overwrites)", ActionRestart},
+		actionItem{"Open in browser", "Open the exercise/solution page", ActionWeb},
+	)
+	return items
 }

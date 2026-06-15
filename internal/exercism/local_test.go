@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/AirmanBugs/exercism/xrc/internal/config"
+	"github.com/AirmanBugs/textercism/internal/config"
 )
 
 // setupExercise creates a minimal downloaded exercise with a solution file and
@@ -13,7 +13,7 @@ import (
 func setupExercise(t *testing.T, solution string) (*config.Config, string, string) {
 	t.Helper()
 	root := t.TempDir()
-	cfg := &config.Config{RepoRoot: root}
+	cfg := &config.Config{Workspace: root}
 	track, ex := "elixir", "demo"
 	dir := filepath.Join(root, track, ex)
 
@@ -58,7 +58,7 @@ func TestLocalStateEditDetection(t *testing.T) {
 }
 
 func TestLocalStateNotOnDisk(t *testing.T) {
-	cfg := &config.Config{RepoRoot: t.TempDir()}
+	cfg := &config.Config{Workspace: t.TempDir()}
 	if got := LocalStateOf(cfg, "elixir", "missing"); got != NotOnDisk {
 		t.Fatalf("missing exercise: got %v, want NotOnDisk", got)
 	}

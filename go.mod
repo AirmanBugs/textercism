@@ -1,4 +1,4 @@
-module github.com/AirmanBugs/exercism/xrc
+module github.com/AirmanBugs/textercism
 
 go 1.26.4
 

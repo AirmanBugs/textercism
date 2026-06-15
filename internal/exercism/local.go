@@ -6,12 +6,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/AirmanBugs/exercism/xrc/internal/config"
+	"github.com/AirmanBugs/textercism/internal/config"
 )
 
-// ExerciseDir returns the absolute path to an exercise in the repo.
+// ExerciseDir returns the absolute path to an exercise in the workspace.
 func ExerciseDir(cfg *config.Config, track, exercise string) string {
-	return filepath.Join(cfg.RepoRoot, track, exercise)
+	return filepath.Join(cfg.Workspace, track, exercise)
 }
 
 // Downloaded reports whether the exercise exists locally (has a .exercism dir).
