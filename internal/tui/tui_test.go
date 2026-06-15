@@ -6,6 +6,7 @@ import (
 
 	"github.com/AirmanBugs/textercism/internal/config"
 	"github.com/AirmanBugs/textercism/internal/exercism"
+	"github.com/AirmanBugs/textercism/internal/sync"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -18,7 +19,7 @@ func newTestModel() *model {
 		{Slug: "lasagna", Title: "Lasagna", Difficulty: "easy", Status: exercism.Completed, IsUnlocked: true},
 		{Slug: "two-fer", Title: "Two Fer", Difficulty: "easy", Status: exercism.NotStarted, IsUnlocked: true},
 	}
-	m := &model{cfg: cfg, track: "elixir", exercises: exs, result: Action{Kind: ActionNone}}
+	m := &model{cfg: cfg, backend: sync.NewLocal(cfg), track: "elixir", exercises: exs}
 	m.list = newExerciseList(cfg, "elixir", exs, 80, 24)
 	m.screen = screenExercises
 	return m
@@ -38,7 +39,7 @@ func send(m *model, key string) *model {
 	return updated.(*model)
 }
 
-func TestExerciseToActionToResult(t *testing.T) {
+func TestExerciseToAction(t *testing.T) {
 	m := newTestModel()
 
 	// View renders the exercise list without panicking.
@@ -46,7 +47,7 @@ func TestExerciseToActionToResult(t *testing.T) {
 		t.Fatalf("exercise list view missing exercise; got:\n%s", v)
 	}
 
-	// Enter on the first exercise -> action screen.
+	// Enter on the first exercise -> action screen with that exercise selected.
 	m = send(m, "enter")
 	if m.screen != screenActions {
 		t.Fatalf("expected action screen, got %v", m.screen)
@@ -55,14 +56,15 @@ func TestExerciseToActionToResult(t *testing.T) {
 		t.Fatalf("expected lasagna selected, got %q", m.selected.Slug)
 	}
 
-	// Enter on the first action (Continue/Open for a completed+not-downloaded
-	// exercise -> ActionStart) sets the result and signals quit.
-	m = send(m, "enter")
-	if m.result.Kind == ActionNone {
-		t.Fatalf("expected an action result, got none")
+	// Choosing an action runs it in-TUI (returns a command) and stays on the
+	// action screen rather than quitting.
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(*model)
+	if cmd == nil {
+		t.Fatalf("expected a command from running an action")
 	}
-	if m.result.Exercise != "lasagna" || m.result.Track != "elixir" {
-		t.Fatalf("unexpected result target: %+v", m.result)
+	if m.screen != screenActions {
+		t.Fatalf("expected to stay on action screen, got %v", m.screen)
 	}
 }
 

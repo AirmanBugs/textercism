@@ -10,24 +10,18 @@ import (
 	"github.com/AirmanBugs/textercism/internal/config"
 	"github.com/AirmanBugs/textercism/internal/exercism"
 	"github.com/AirmanBugs/textercism/internal/render"
+	"github.com/AirmanBugs/textercism/internal/sync"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Action is what the user chose to do with an exercise.
-type Action struct {
-	Kind     ActionKind
-	Track    string
-	Exercise string
-}
-
+// ActionKind identifies an action the user can run on an exercise.
 type ActionKind int
 
 const (
-	ActionNone ActionKind = iota
-	ActionStart
+	ActionStart ActionKind = iota
 	ActionRestart
 	ActionOpen
 	ActionTest
@@ -45,8 +39,9 @@ const (
 )
 
 type model struct {
-	cfg    *config.Config
-	client *exercism.Client
+	cfg     *config.Config
+	client  *exercism.Client
+	backend sync.Backend
 
 	showSync bool // whether to offer the "Pause & sync" action
 
@@ -54,13 +49,13 @@ type model struct {
 	list     list.Model
 	viewport viewport.Model // instructions pane on the action screen
 	stacked  bool           // true when the terminal is too narrow for side-by-side
+	status   string         // transient status line on the action screen
 
 	track     string
 	exercises []exercism.Exercise
 	selected  exercism.Exercise
 
-	result Action
-	err    error
+	err error
 
 	width, height int
 }
@@ -73,28 +68,28 @@ const minSideBySideWidth = 90
 const actionPaneWidth = 34
 
 // Run launches the interactive UI starting at the track picker. If startTrack is
-// non-empty it jumps straight to that track's exercises. showSync controls
-// whether the "Pause & sync" action is offered (off for the local-only backend).
-// Returns the chosen Action (Kind ActionNone if the user quit without choosing).
-func Run(cfg *config.Config, startTrack string, showSync bool) (Action, error) {
+// non-empty it jumps straight to that track's exercises. Actions (start, test,
+// submit, …) run inside the TUI: test/submit suspend to the full terminal, the
+// rest run in the background and report a status line.
+func Run(cfg *config.Config, backend sync.Backend, startTrack string) error {
 	m := &model{
 		cfg:      cfg,
 		client:   exercism.NewClient(cfg),
-		showSync: showSync,
-		result:   Action{Kind: ActionNone},
+		backend:  backend,
+		showSync: backend.SyncsAcrossDevices(),
 	}
 
 	if startTrack != "" {
 		m.track = startTrack
 		if err := m.loadExercises(); err != nil {
-			return m.result, err
+			return err
 		}
 		m.screen = screenExercises
 		m.list = newExerciseList(cfg, startTrack, m.exercises, 0, 0)
 	} else {
 		l, err := m.newTrackList()
 		if err != nil {
-			return m.result, err
+			return err
 		}
 		m.list = l
 		m.screen = screenTracks
@@ -103,13 +98,9 @@ func Run(cfg *config.Config, startTrack string, showSync bool) (Action, error) {
 	prog := tea.NewProgram(m, tea.WithAltScreen())
 	final, err := prog.Run()
 	if err != nil {
-		return Action{Kind: ActionNone}, err
+		return err
 	}
-	fm := final.(*model)
-	if fm.err != nil {
-		return Action{Kind: ActionNone}, fm.err
-	}
-	return fm.result, nil
+	return final.(*model).err
 }
 
 func (m *model) Init() tea.Cmd { return nil }
@@ -121,7 +112,28 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.relayout()
 		return m, nil
 
+	case actionDoneMsg:
+		// A background action finished: show its status and refresh the action
+		// list + instructions (local state may have changed, e.g. after download).
+		m.status = msg.status
+		if m.screen == screenActions {
+			m.list = newActionList(m.cfg, m.track, m.selected, m.showSync, 0, 0)
+			m.relayout()
+		}
+		return m, nil
+
+	case execDoneMsg:
+		// A suspended command (test/submit) finished and the TUI has resumed.
+		m.status = msg.status
+		if m.screen == screenActions {
+			m.list = newActionList(m.cfg, m.track, m.selected, m.showSync, 0, 0)
+			m.relayout()
+		}
+		return m, nil
+
 	case tea.KeyMsg:
+		// Any keypress clears a stale status line.
+		m.status = ""
 		// Let the list handle keys while filtering (so typing works).
 		if m.list.FilterState() == list.Filtering {
 			break
@@ -185,7 +197,10 @@ func (m *model) relayout() {
 	m.viewport.SetYOffset(off)
 }
 
-var footerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+var (
+	footerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	statusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+)
 
 func (m *model) View() string {
 	if m.screen != screenActions {
@@ -193,12 +208,15 @@ func (m *model) View() string {
 	}
 
 	// Action screen: actions + instructions, side by side (or stacked when narrow).
-	footer := footerStyle.Render("↑/↓ select · enter run · PgUp/PgDn scroll instructions · q back")
+	line := footerStyle.Render("↑/↓ select · enter run · PgUp/PgDn scroll · q back")
+	if m.status != "" {
+		line = statusStyle.Render(m.status) + "  " + line
+	}
 	if m.stacked {
-		return m.list.View() + "\n" + m.viewport.View() + "\n" + footer
+		return m.list.View() + "\n" + m.viewport.View() + "\n" + line
 	}
 	body := lipgloss.JoinHorizontal(lipgloss.Top, m.list.View(), "  ", m.viewport.View())
-	return body + "\n" + footer
+	return body + "\n" + line
 }
 
 // --- transitions ---
@@ -254,8 +272,7 @@ func (m *model) choose() (tea.Model, tea.Cmd) {
 		if !ok {
 			return m, nil
 		}
-		m.result = Action{Kind: it.kind, Track: m.track, Exercise: m.selected.Slug}
-		return m, tea.Quit
+		return m.runAction(it.kind)
 	}
 	return m, nil
 }

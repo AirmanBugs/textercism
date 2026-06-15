@@ -80,35 +80,12 @@ func main() {
 	}
 }
 
-// runTUI launches the interactive UI, then performs the chosen action (outside
-// the alt-screen so its output goes to the real terminal).
+// runTUI launches the interactive UI. Actions run inside the TUI now, so there's
+// nothing to perform afterward.
 func runTUI(cfg *config.Config, backend sync.Backend, startTrack string) {
-	action, err := tui.Run(cfg, startTrack, backend.SyncsAcrossDevices())
-	if err != nil {
+	if err := tui.Run(cfg, backend, startTrack); err != nil {
 		fmt.Fprintln(os.Stderr, "✘ "+err.Error())
 		os.Exit(1)
-	}
-	perform(cfg, backend, action)
-}
-
-func perform(cfg *config.Config, backend sync.Backend, a tui.Action) {
-	switch a.Kind {
-	case tui.ActionStart:
-		actions.Start(cfg, backend, a.Track, a.Exercise, false)
-	case tui.ActionRestart:
-		actions.Start(cfg, backend, a.Track, a.Exercise, true)
-	case tui.ActionOpen:
-		actions.Open(cfg, backend, a.Track, a.Exercise)
-	case tui.ActionTest:
-		actions.Test(cfg, a.Track, a.Exercise)
-	case tui.ActionSubmit:
-		actions.Submit(cfg, a.Track, a.Exercise, promptConfirm)
-	case tui.ActionPause:
-		actions.Pause(cfg, backend, a.Track, a.Exercise)
-	case tui.ActionWeb:
-		actions.Web(cfg, a.Track, a.Exercise)
-	case tui.ActionNone:
-		// user quit; nothing to do
 	}
 }
 
