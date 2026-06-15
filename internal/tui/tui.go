@@ -47,9 +47,13 @@ type model struct {
 
 	screen   screen
 	list     list.Model
-	viewport viewport.Model // instructions pane on the action screen
+	viewport viewport.Model // right-hand pane on the action screen
 	stacked  bool           // true when the terminal is too narrow for side-by-side
 	status   string         // transient status line on the action screen
+
+	pane         paneMode // what the right pane shows: instructions or test output
+	instructions string   // rendered instructions (cached for the selected exercise)
+	testOutput   string   // captured + rendered test output
 
 	track     string
 	exercises []exercism.Exercise
@@ -59,6 +63,14 @@ type model struct {
 
 	width, height int
 }
+
+// paneMode is what the action screen's right pane is showing.
+type paneMode int
+
+const (
+	paneInstructions paneMode = iota
+	paneTestOutput
+)
 
 // minSideBySideWidth is the terminal width below which the action screen stacks
 // the instructions under the action list instead of placing them side by side.
@@ -114,7 +126,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case actionDoneMsg:
 		// A background action finished: show its status and refresh the action
-		// list + instructions (local state may have changed, e.g. after download).
+		// list + pane (local state may have changed, e.g. after download).
 		m.status = msg.status
 		if m.screen == screenActions {
 			m.list = newActionList(m.cfg, m.track, m.selected, m.showSync, 0, 0)
@@ -122,18 +134,40 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case execDoneMsg:
-		// A suspended command (test/submit) finished and the TUI has resumed.
+	case testDoneMsg:
+		// Tests finished: show output in the right pane.
 		m.status = msg.status
+		m.testOutput = msg.rendered
+		m.pane = paneTestOutput
 		if m.screen == screenActions {
+			m.viewport.SetContent(m.paneContent())
+			m.viewport.GotoTop()
+		}
+		return m, nil
+
+	case instructionsReadyMsg:
+		// A background download for instructions finished. Only apply if the user
+		// is still on this exercise's instructions pane.
+		if m.screen == screenActions && m.selected.Slug == msg.exercise {
+			if msg.status != "" {
+				m.status = msg.status
+			}
 			m.list = newActionList(m.cfg, m.track, m.selected, m.showSync, 0, 0)
+			if m.pane == paneInstructions {
+				m.viewport.SetContent(m.renderInstructions(m.viewport.Width))
+				m.viewport.GotoTop()
+			}
 			m.relayout()
 		}
 		return m, nil
 
 	case tea.KeyMsg:
-		// Any keypress clears a stale status line.
-		m.status = ""
+		// Most keypresses clear a stale status line (but not pane scrolling).
+		switch msg.String() {
+		case "pgup", "pgdown", "ctrl+u", "ctrl+d":
+		default:
+			m.status = ""
+		}
 		// Let the list handle keys while filtering (so typing works).
 		if m.list.FilterState() == list.Filtering {
 			break
@@ -147,14 +181,22 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.choose()
 		}
 
-		// On the action screen, PgUp/PgDn (and ctrl+u/d) scroll the instructions
-		// pane; arrow keys drive the action list.
+		// On the action screen, PgUp/PgDn (and ctrl+u/d) scroll the right pane;
+		// "i" switches the pane back to instructions from test output; arrow keys
+		// drive the action list.
 		if m.screen == screenActions {
 			switch msg.String() {
 			case "pgup", "pgdown", "ctrl+u", "ctrl+d":
 				var cmd tea.Cmd
 				m.viewport, cmd = m.viewport.Update(msg)
 				return m, cmd
+			case "i":
+				if m.pane == paneTestOutput {
+					m.pane = paneInstructions
+					m.viewport.SetContent(m.paneContent())
+					m.viewport.GotoTop()
+					return m, nil
+				}
 			}
 		}
 	}
@@ -190,11 +232,19 @@ func (m *model) relayout() {
 		m.viewport.Height = bodyH
 	}
 
-	// Re-wrap the instructions to the (possibly changed) pane width, preserving
-	// scroll position as best we can.
+	// Fill the pane with whatever it's currently showing, re-wrapped to the
+	// (possibly changed) width, preserving scroll position as best we can.
 	off := m.viewport.YOffset
-	m.viewport.SetContent(m.renderInstructions(m.viewport.Width))
+	m.viewport.SetContent(m.paneContent())
 	m.viewport.SetYOffset(off)
+}
+
+// paneContent returns the rendered text for the right pane based on its mode.
+func (m *model) paneContent() string {
+	if m.pane == paneTestOutput {
+		return m.testOutput
+	}
+	return m.renderInstructions(m.viewport.Width)
 }
 
 var (
@@ -207,8 +257,12 @@ func (m *model) View() string {
 		return m.list.View()
 	}
 
-	// Action screen: actions + instructions, side by side (or stacked when narrow).
-	line := footerStyle.Render("↑/↓ select · enter run · PgUp/PgDn scroll · q back")
+	// Action screen: actions + right pane, side by side (or stacked when narrow).
+	hint := "↑/↓ select · enter run · PgUp/PgDn scroll · q back"
+	if m.pane == paneTestOutput {
+		hint = "↑/↓ select · enter run · PgUp/PgDn scroll · i instructions · q back"
+	}
+	line := footerStyle.Render(hint)
 	if m.status != "" {
 		line = statusStyle.Render(m.status) + "  " + line
 	}
@@ -264,8 +318,7 @@ func (m *model) choose() (tea.Model, tea.Cmd) {
 		if !ok {
 			return m, nil
 		}
-		m.enterActions(it.ex)
-		return m, nil
+		return m, m.enterActions(it.ex)
 
 	case screenActions:
 		it, ok := m.list.SelectedItem().(actionItem)
@@ -277,15 +330,29 @@ func (m *model) choose() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// enterActions switches to the action screen for ex: builds the action list,
-// pre-renders the instructions into the viewport (so the pane is populated with
-// no further lag), and lays out the split.
-func (m *model) enterActions(ex exercism.Exercise) {
+// enterActions switches to the action screen for ex. If the exercise isn't
+// downloaded yet, it kicks off a download (returning a command) and shows a
+// loading message until the real instructions are available.
+func (m *model) enterActions(ex exercism.Exercise) tea.Cmd {
 	m.selected = ex
+	m.status = ""
+	m.pane = paneInstructions
+	m.testOutput = ""
 	m.list = newActionList(m.cfg, m.track, ex, m.showSync, m.width, m.height-1)
 	m.viewport = viewport.New(m.width, m.height)
 	m.screen = screenActions
-	m.relayout() // sizes panes and renders the instructions into the viewport
+
+	if exercism.Downloaded(m.cfg, m.track, ex.Slug) {
+		m.instructions = "" // rendered lazily in relayout at the right width
+		m.relayout()
+		return nil
+	}
+
+	// Not on disk: show a loading note and download so the full README appears.
+	m.instructions = ""
+	m.relayout()
+	m.viewport.SetContent(render.Markdown("# "+ex.Title+"\n\n_Loading instructions…_", m.viewport.Width))
+	return m.downloadForInstructions(m.track, ex.Slug)
 }
 
 // renderInstructions returns the rendered README for the selected exercise, or a
