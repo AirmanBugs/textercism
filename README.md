@@ -38,9 +38,10 @@ textercism                       # interactive: pick a track, then an exercise, 
 textercism <track>               # interactive: jump straight to a track's exercises
 textercism tracks                # list tracks with join state + progress
 textercism list <track>          # list exercises with status badges
-textercism start <track> <ex>    # download + open solution in VS Code, instructions in browser
+textercism start <track> <ex>    # download + open solution in VS Code
 textercism restart <track> <ex>  # re-download stub (overwrites) + open
-textercism open <track> <ex>     # open solution + instructions (downloads/syncs if missing)
+textercism open <track> <ex>     # open solution in VS Code (downloads/syncs if missing)
+textercism read <track> <ex>     # render the exercise instructions in the terminal
 textercism test <track> <ex>     # run the track's tests (mix test on elixir, else exercism test)
 textercism submit <track> <ex>   # test, then submit to Exercism
 textercism pause <track> <ex>    # save draft to your sync backend (when configured)
@@ -78,9 +79,11 @@ Merged, that gives:
   This API is unofficial/undocumented, so textercism parses it leniently and never
   relies on undocumented *write* endpoints.
 - **Start / continue** opens a **single-folder** VS Code window (one language server,
-  avoiding the multi-root workspace crash) and the instructions in the browser
-  (exercism.org), where they render properly beside the editor — VS Code's `code` CLI
-  can't arrange a README pane.
+  avoiding the multi-root workspace crash).
+- **Instructions** render in the terminal via [Glamour](https://github.com/charmbracelet/glamour):
+  the TUI has a scrollable **Instructions** screen, and `textercism read <track> <ex>`
+  prints the rendered README to stdout (pipe to `less` for paging). The `web` command
+  still opens the exercise on exercism.org in a browser when you want it.
 - **Submit** runs the tests, then `exercism submit` in place.
 - **Drafts** (in-progress, unsubmitted code) are the only thing that needs syncing,
   since Exercism doesn't store them. Cross-device sync is handled by a pluggable

@@ -13,6 +13,7 @@ import (
 	"github.com/AirmanBugs/textercism/internal/exercism"
 	"github.com/AirmanBugs/textercism/internal/sync"
 	"github.com/AirmanBugs/textercism/internal/tui"
+	"golang.org/x/term"
 )
 
 const usage = `textercism — a text UI for Exercism
@@ -22,9 +23,10 @@ Usage:
   textercism <track>               interactive: jump to a track's exercises
   textercism tracks                list tracks with join state + progress
   textercism list <track>          list exercises with status
-  textercism start <track> <ex>    download + open solution in VS Code, instructions in browser
+  textercism start <track> <ex>    download + open solution in VS Code
   textercism restart <track> <ex>  re-download stub (overwrites) + open
-  textercism open <track> <ex>     open solution + instructions (downloads/syncs if missing)
+  textercism open <track> <ex>     open solution in VS Code (downloads/syncs if missing)
+  textercism read <track> <ex>     render the exercise instructions in the terminal
   textercism test <track> <ex>     run the track's tests
   textercism submit <track> <ex>   test, then submit to Exercism
   textercism pause <track> <ex>    save draft to your sync backend (when configured)
@@ -57,6 +59,8 @@ func main() {
 		actions.Start(cfg, backend, args[1], args[2], true)
 	case args[0] == "open" && len(args) == 3:
 		actions.Open(cfg, backend, args[1], args[2])
+	case args[0] == "read" && len(args) == 3:
+		actions.Read(cfg, args[1], args[2], terminalWidth())
 	case args[0] == "test" && len(args) == 3:
 		actions.Test(cfg, args[1], args[2])
 	case args[0] == "submit" && len(args) == 3:
@@ -149,6 +153,15 @@ func printExercises(cfg *config.Config, track string) {
 		}
 		fmt.Printf("%s %s %-28s [%s]%s\n", display.Badge(), local, e.Title, diff, rec)
 	}
+}
+
+// terminalWidth returns the current terminal width for wrapping rendered
+// markdown, or a sensible default when stdout isn't a terminal (e.g. piped).
+func terminalWidth() int {
+	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
+		return w
+	}
+	return 80
 }
 
 func promptConfirm(question string) bool {

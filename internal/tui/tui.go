@@ -9,7 +9,9 @@ import (
 
 	"github.com/AirmanBugs/textercism/internal/config"
 	"github.com/AirmanBugs/textercism/internal/exercism"
+	"github.com/AirmanBugs/textercism/internal/render"
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -32,6 +34,9 @@ const (
 	ActionSubmit
 	ActionPause
 	ActionWeb
+	// ActionInstructions is handled inside the TUI (a scrollable screen), not
+	// returned to main like the others.
+	ActionInstructions
 )
 
 type screen int
@@ -40,6 +45,7 @@ const (
 	screenTracks screen = iota
 	screenExercises
 	screenActions
+	screenInstructions
 )
 
 type model struct {
@@ -48,8 +54,9 @@ type model struct {
 
 	showSync bool // whether to offer the "Pause & sync" action
 
-	screen screen
-	list   list.Model
+	screen   screen
+	list     list.Model
+	viewport viewport.Model // instructions reader
 
 	track     string
 	exercises []exercism.Exercise
@@ -108,9 +115,24 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.list.SetSize(msg.Width, msg.Height-1)
+		m.viewport.Width = msg.Width
+		m.viewport.Height = msg.Height - 1
 		return m, nil
 
 	case tea.KeyMsg:
+		// The instructions screen is a scrollable reader, not a list.
+		if m.screen == screenInstructions {
+			switch msg.String() {
+			case "ctrl+c":
+				return m, tea.Quit
+			case "q", "esc":
+				return m.goBack()
+			}
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
+		}
+
 		// Let the list handle keys while filtering (so typing works).
 		if m.list.FilterState() == list.Filtering {
 			break
@@ -131,6 +153,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) View() string {
+	if m.screen == screenInstructions {
+		footer := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).
+			Render("↑/↓ scroll · q back")
+		return m.viewport.View() + "\n" + footer
+	}
 	return m.list.View()
 }
 
@@ -153,6 +180,11 @@ func (m *model) goBack() (tea.Model, tea.Cmd) {
 	case screenActions:
 		m.list = newExerciseList(m.cfg, m.track, m.exercises, m.width, m.height-1)
 		m.screen = screenExercises
+		return m, nil
+	case screenInstructions:
+		// Back to the selected exercise's action menu.
+		m.list = newActionList(m.cfg, m.track, m.selected, m.showSync, m.width, m.height-1)
+		m.screen = screenActions
 		return m, nil
 	}
 	return m, nil
@@ -189,10 +221,44 @@ func (m *model) choose() (tea.Model, tea.Cmd) {
 		if !ok {
 			return m, nil
 		}
+		// Instructions are shown in-app (a scrollable screen), not run by main.
+		if it.kind == ActionInstructions {
+			m.openInstructions()
+			return m, nil
+		}
 		m.result = Action{Kind: it.kind, Track: m.track, Exercise: m.selected.Slug}
 		return m, tea.Quit
 	}
 	return m, nil
+}
+
+// openInstructions renders the selected exercise's README into the viewport and
+// switches to the instructions screen. If the exercise isn't downloaded (no
+// local README), it shows the API blurb plus a hint to start it.
+func (m *model) openInstructions() {
+	w := m.width
+	if w <= 0 {
+		w = 80
+	}
+	h := m.height - 1
+	if h <= 0 {
+		h = 20
+	}
+
+	text, ok := render.Instructions(m.cfg, m.track, m.selected.Slug, w)
+	if !ok {
+		blurb := m.selected.Blurb
+		if blurb == "" {
+			blurb = "_No description available._"
+		}
+		text = render.Markdown(
+			fmt.Sprintf("# %s\n\n%s\n\n_Not downloaded yet — choose **Start** to get the full instructions._",
+				m.selected.Title, blurb), w)
+	}
+
+	m.viewport = viewport.New(w, h)
+	m.viewport.SetContent(text)
+	m.screen = screenInstructions
 }
 
 func (m *model) loadExercises() error {
@@ -277,6 +343,7 @@ func actionsFor(display exercism.DisplayStatus, local exercism.LocalState, showS
 	}
 
 	items = append(items,
+		actionItem{"Instructions", "Read the exercise instructions", ActionInstructions},
 		actionItem{"Run tests", "Run the exercise's tests", ActionTest},
 		actionItem{"Submit", "Test, then submit to Exercism", ActionSubmit},
 	)

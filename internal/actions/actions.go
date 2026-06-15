@@ -10,6 +10,7 @@ import (
 
 	"github.com/AirmanBugs/textercism/internal/config"
 	"github.com/AirmanBugs/textercism/internal/exercism"
+	"github.com/AirmanBugs/textercism/internal/render"
 	"github.com/AirmanBugs/textercism/internal/sync"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -105,15 +106,20 @@ func openEditor(cfg *config.Config, track, exercise string) {
 		fail(err.Error())
 	}
 
-	// Show the instructions in the browser, where they render properly and can sit
-	// beside the editor window (VS Code's CLI can't arrange a README pane).
-	OpenURL(instructionsURL(track, exercise))
+	// Instructions are read in-terminal now (the TUI's Instructions screen, or the
+	// `read` command), so we no longer auto-open the browser. The `web` command
+	// still opens exercism.org explicitly.
 }
 
-// instructionsURL is the exercise's instructions page on exercism.org. The URL
-// is deterministic, so no API call is needed.
-func instructionsURL(track, exercise string) string {
-	return fmt.Sprintf("https://exercism.org/tracks/%s/exercises/%s", track, exercise)
+// Read renders the exercise's instructions (README) to the terminal. Use it
+// non-interactively, e.g. `textercism read elixir two-fer | less`.
+func Read(cfg *config.Config, track, exercise string, width int) {
+	text, ok := render.Instructions(cfg, track, exercise, width)
+	if !ok {
+		fail("Exercise not downloaded — start it first to get the instructions.")
+		return
+	}
+	fmt.Print(text)
 }
 
 // Test runs the exercise's tests, streaming output.
