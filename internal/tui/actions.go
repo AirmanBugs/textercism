@@ -3,22 +3,27 @@ package tui
 import (
 	"fmt"
 	"os/exec"
+	"regexp"
 	"runtime"
 	"strings"
 
 	"github.com/AirmanBugs/textercism/internal/exercism"
 	"github.com/AirmanBugs/textercism/internal/render"
 	"github.com/AirmanBugs/textercism/internal/sync"
+	"github.com/AirmanBugs/textercism/internal/testresult"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 // actionDoneMsg carries the result of a background action back to the model.
 type actionDoneMsg struct{ status string }
 
-// testDoneMsg carries captured test output to show in the right pane.
+// testDoneMsg carries parsed test results to show in the right pane: a clean
+// rendered summary, the raw output (for the "r" toggle), and a footer line.
 type testDoneMsg struct {
-	status   string
-	rendered string
+	status string // footer summary, e.g. "✗ 10 of 11 failed"
+	clean  string // rendered clean view (markdown -> ANSI)
+	raw    string // raw, lightly cleaned output
+	width  int
 }
 
 // instructionsReadyMsg signals a background download finished so the real
@@ -58,26 +63,49 @@ func (m *model) runAction(kind ActionKind) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// testCmd runs the exercise's tests in the background, capturing combined output,
-// and returns it (rendered) for the right pane.
+// testCmd runs the exercise's tests in the background, parses the output into a
+// clean result, and returns both the clean render and the raw output.
 func (m *model) testCmd(track, ex string) tea.Cmd {
 	cfg, width := m.cfg, m.viewport.Width
 	return func() tea.Msg {
-		cmd := exercism.TestCmd(cfg, track, ex)
-		out, err := cmd.CombinedOutput()
+		out, _ := exercism.TestCmd(cfg, track, ex).CombinedOutput()
+		res := testresult.Parse(string(out))
 
-		status := "Tests passed."
-		header := "# ✓ Tests passed\n\n"
-		if err != nil {
-			status = "Tests failed."
-			header = "# ✗ Tests failed\n\n"
-		}
-		// Render the header as markdown, then append the raw output in a code
-		// block so colors/spacing survive.
-		body := header + "```\n" + strings.TrimRight(string(out), "\n") + "\n```\n"
-		return testDoneMsg{status: status, rendered: render.Markdown(body, width)}
+		clean := render.Markdown(res.Markdown(), width)
+		raw := render.Markdown("```\n"+cleanRaw(string(out))+"\n```\n", width)
+		return testDoneMsg{status: res.Summary(), clean: clean, raw: raw, width: width}
 	}
 }
+
+// cleanRaw strips the worst of the noise (compile warnings and the ExUnit
+// preamble) from raw test output for the "show raw" view, while keeping the rest
+// intact.
+func cleanRaw(s string) string {
+	var keep []string
+	skipWarning := false
+	for _, line := range strings.Split(s, "\n") {
+		t := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(t, "warning:"):
+			skipWarning = true
+			continue
+		case skipWarning && (t == "" || strings.HasPrefix(t, "│") ||
+			strings.HasPrefix(t, "└─") || strings.HasPrefix(t, "~~~") ||
+			regexpDigitsBar.MatchString(t) || strings.HasPrefix(t, "typing violation") ||
+			strings.HasPrefix(t, "While Elixir") || strings.HasPrefix(t, "given types") ||
+			strings.HasPrefix(t, "where ") || strings.HasPrefix(t, "# type:") ||
+			strings.HasPrefix(t, "# from:") || strings.HasPrefix(t, "left =") ||
+			strings.HasPrefix(t, "right =") || strings.HasPrefix(t, "left ==")):
+			continue
+		default:
+			skipWarning = false
+			keep = append(keep, line)
+		}
+	}
+	return strings.TrimSpace(strings.Join(keep, "\n"))
+}
+
+var regexpDigitsBar = regexp.MustCompile(`^\d+\s*│`)
 
 // suspendSubmit runs tests then submits, in the full terminal (submit is a
 // deliberate, infrequent action where seeing full output matters).

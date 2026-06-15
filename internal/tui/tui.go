@@ -54,7 +54,9 @@ type model struct {
 	pane         paneMode // what the right pane shows: instructions or test output
 	paneFocused  bool     // true when the right pane (not the action list) has focus
 	instructions string   // rendered instructions (cached for the selected exercise)
-	testOutput   string   // captured + rendered test output
+	testClean    string   // rendered clean test results
+	testRaw      string   // rendered raw test output (for the "r" toggle)
+	showRawTest  bool     // whether the test pane shows raw output
 
 	track     string
 	exercises []exercism.Exercise
@@ -136,10 +138,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case testDoneMsg:
-		// Tests finished: show output in the right pane and focus it so the user
-		// can scroll the results immediately.
+		// Tests finished: show the clean results in the right pane and focus it so
+		// the user can scroll immediately.
 		m.status = msg.status
-		m.testOutput = msg.rendered
+		m.testClean = msg.clean
+		m.testRaw = msg.raw
+		m.showRawTest = false
 		m.pane = paneTestOutput
 		m.paneFocused = true
 		if m.screen == screenActions {
@@ -201,6 +205,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.pane == paneTestOutput {
 					m.pane = paneInstructions
 					m.paneFocused = false
+					m.viewport.SetContent(m.paneContent())
+					m.viewport.GotoTop()
+					return m, nil
+				}
+			case "r":
+				// Toggle raw vs. clean test output when showing test results.
+				if m.pane == paneTestOutput {
+					m.showRawTest = !m.showRawTest
 					m.viewport.SetContent(m.paneContent())
 					m.viewport.GotoTop()
 					return m, nil
@@ -267,7 +279,10 @@ func (m *model) relayout() {
 // paneContent returns the rendered text for the right pane based on its mode.
 func (m *model) paneContent() string {
 	if m.pane == paneTestOutput {
-		return m.testOutput
+		if m.showRawTest {
+			return m.testRaw
+		}
+		return m.testClean
 	}
 	return m.renderInstructions(m.viewport.Width)
 }
@@ -284,12 +299,19 @@ func (m *model) View() string {
 		return m.list.View()
 	}
 
-	// Footer reflects what the keys do given the current focus.
+	// Footer reflects what the keys do given the current focus and pane.
 	var hint string
 	if m.paneFocused {
-		hint = "↑/↓ scroll · tab actions · i instructions · q back"
+		hint = "↑/↓ scroll · tab actions · q back"
 	} else {
 		hint = "↑/↓ select · enter run · tab scroll pane · q back"
+	}
+	if m.pane == paneTestOutput {
+		raw := "r raw"
+		if m.showRawTest {
+			raw = "r clean"
+		}
+		hint = "i instructions · " + raw + " · " + hint
 	}
 	line := footerStyle.Render(hint)
 	if m.status != "" {
@@ -389,7 +411,9 @@ func (m *model) enterActions(ex exercism.Exercise) tea.Cmd {
 	m.status = ""
 	m.pane = paneInstructions
 	m.paneFocused = false
-	m.testOutput = ""
+	m.testClean = ""
+	m.testRaw = ""
+	m.showRawTest = false
 	m.list = newActionList(m.cfg, m.track, ex, m.showSync, m.width, m.height-1)
 	m.viewport = viewport.New(m.width, m.height)
 	m.screen = screenActions

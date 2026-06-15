@@ -1,0 +1,444 @@
+    warning: variable "list" is unused (if the variable is not meant to be used, prefix it with an underscore)
+    │
+  2 │   def today(list) do
+    │             ~~~~
+    │
+    └─ lib/bird_count.ex:2:13: BirdCount.today/1
+
+    warning: variable "list" is unused (if the variable is not meant to be used, prefix it with an underscore)
+    │
+  6 │   def increment_day_count(list) do
+    │                           ~~~~
+    │
+    └─ lib/bird_count.ex:6:27: BirdCount.increment_day_count/1
+
+    warning: variable "list" is unused (if the variable is not meant to be used, prefix it with an underscore)
+    │
+ 10 │   def has_day_without_birds?(list) do
+    │                              ~~~~
+    │
+    └─ lib/bird_count.ex:10:30: BirdCount.has_day_without_birds?/1
+
+    warning: variable "list" is unused (if the variable is not meant to be used, prefix it with an underscore)
+    │
+ 14 │   def total(list) do
+    │             ~~~~
+    │
+    └─ lib/bird_count.ex:14:13: BirdCount.total/1
+
+    warning: variable "list" is unused (if the variable is not meant to be used, prefix it with an underscore)
+    │
+ 18 │   def busy_days(list) do
+    │                 ~~~~
+    │
+    └─ lib/bird_count.ex:18:17: BirdCount.busy_days/1
+
+Running ExUnit with seed: 0, max_cases: 1
+Excluding tags: [:pending]
+
+    warning: comparison between distinct types found:
+
+        left == right
+
+    given types:
+
+        dynamic(nil) == integer()
+
+    where "left" (context ExUnit.Assertions) was given the type:
+
+        # type: dynamic(nil)
+        # from: test/bird_count_test.exs:12
+        left = BirdCount.today([5])
+
+    where "right" (context ExUnit.Assertions) was given the type:
+
+        # type: integer()
+        # from: test/bird_count_test.exs:12
+        right = 5
+
+    While Elixir can compare across all types, you are comparing across types which are always disjoint, and the result is either always true or always false
+
+    typing violation found at:
+    │
+ 12 │       assert BirdCount.today([5]) == 5
+    │                                   ~
+    │
+    └─ test/bird_count_test.exs:12:35: BirdCountTest."test today/1 returns today's bird count"/1
+
+    warning: comparison between distinct types found:
+
+        left == right
+
+    given types:
+
+        dynamic(nil) == non_empty_list(integer())
+
+    where "left" (context ExUnit.Assertions) was given the type:
+
+        # type: dynamic(nil)
+        # from: test/bird_count_test.exs:20
+        left = BirdCount.increment_day_count([])
+
+    where "right" (context ExUnit.Assertions) was given the type:
+
+        # type: non_empty_list(integer())
+        # from: test/bird_count_test.exs:20
+        right = [1]
+
+    While Elixir can compare across all types, you are comparing across types which are always disjoint, and the result is either always true or always false
+
+    typing violation found at:
+    │
+ 20 │       assert BirdCount.increment_day_count([]) == [1]
+    │                                                ~
+    │
+    └─ test/bird_count_test.exs:20:48: BirdCountTest."test increment_day_count/1 creates entry for today if no bird watching data recorded"/1
+
+    warning: comparison between distinct types found:
+
+        left == right
+
+    given types:
+
+        dynamic(nil) == non_empty_list(integer())
+
+    where "left" (context ExUnit.Assertions) was given the type:
+
+        # type: dynamic(nil)
+        # from: test/bird_count_test.exs:25
+        left = BirdCount.increment_day_count([5])
+
+    where "right" (context ExUnit.Assertions) was given the type:
+
+        # type: non_empty_list(integer())
+        # from: test/bird_count_test.exs:25
+        right = [6]
+
+    While Elixir can compare across all types, you are comparing across types which are always disjoint, and the result is either always true or always false
+
+    typing violation found at:
+    │
+ 25 │       assert BirdCount.increment_day_count([5]) == [6]
+    │                                                 ~
+    │
+    └─ test/bird_count_test.exs:25:49: BirdCountTest."test increment_day_count/1 adds 1 to today's bird count"/1
+
+    warning: comparison between distinct types found:
+
+        left == right
+
+    given types:
+
+        dynamic(nil) == false
+
+    where "left" (context ExUnit.Assertions) was given the type:
+
+        # type: dynamic(nil)
+        # from: test/bird_count_test.exs:33
+        left = BirdCount.has_day_without_birds?([])
+
+    where "right" (context ExUnit.Assertions) was given the type:
+
+        # type: false
+        # from: test/bird_count_test.exs:33
+        right = false
+
+    While Elixir can compare across all types, you are comparing across types which are always disjoint, and the result is either always true or always false
+
+    typing violation found at:
+    │
+ 33 │       assert BirdCount.has_day_without_birds?([]) == false
+    │                                                   ~
+    │
+    └─ test/bird_count_test.exs:33:51: BirdCountTest."test has_day_without_birds?/1 false if no bird watching data recorded"/1
+
+    warning: comparison between distinct types found:
+
+        left == right
+
+    given types:
+
+        dynamic(nil) == false
+
+    where "left" (context ExUnit.Assertions) was given the type:
+
+        # type: dynamic(nil)
+        # from: test/bird_count_test.exs:38
+        left = BirdCount.has_day_without_birds?([1])
+
+    where "right" (context ExUnit.Assertions) was given the type:
+
+        # type: false
+        # from: test/bird_count_test.exs:38
+        right = false
+
+    While Elixir can compare across all types, you are comparing across types which are always disjoint, and the result is either always true or always false
+
+    typing violation found at:
+    │
+ 38 │       assert BirdCount.has_day_without_birds?([1]) == false
+    │                                                    ~
+    │
+    └─ test/bird_count_test.exs:38:52: BirdCountTest."test has_day_without_birds?/1 false if there are no zeros in bird watching data"/1
+
+    warning: comparison between distinct types found:
+
+        left == right
+
+    given types:
+
+        dynamic(nil) == true
+
+    where "left" (context ExUnit.Assertions) was given the type:
+
+        # type: dynamic(nil)
+        # from: test/bird_count_test.exs:44
+        left = BirdCount.has_day_without_birds?([0])
+
+    where "right" (context ExUnit.Assertions) was given the type:
+
+        # type: true
+        # from: test/bird_count_test.exs:44
+        right = true
+
+    While Elixir can compare across all types, you are comparing across types which are always disjoint, and the result is either always true or always false
+
+    typing violation found at:
+    │
+ 44 │       assert BirdCount.has_day_without_birds?([0]) == true
+    │                                                    ~
+    │
+    └─ test/bird_count_test.exs:44:52: BirdCountTest."test has_day_without_birds?/1 true if there are is at least one zero in bird watching data"/1
+
+    warning: comparison between distinct types found:
+
+        left == right
+
+    given types:
+
+        dynamic(nil) == integer()
+
+    where "left" (context ExUnit.Assertions) was given the type:
+
+        # type: dynamic(nil)
+        # from: test/bird_count_test.exs:53
+        left = BirdCount.total([])
+
+    where "right" (context ExUnit.Assertions) was given the type:
+
+        # type: integer()
+        # from: test/bird_count_test.exs:53
+        right = 0
+
+    While Elixir can compare across all types, you are comparing across types which are always disjoint, and the result is either always true or always false
+
+    typing violation found at:
+    │
+ 53 │       assert BirdCount.total([]) == 0
+    │                                  ~
+    │
+    └─ test/bird_count_test.exs:53:34: BirdCountTest."test total/1 zero if no bird watching data recorded"/1
+
+    warning: comparison between distinct types found:
+
+        left == right
+
+    given types:
+
+        dynamic(nil) == integer()
+
+    where "left" (context ExUnit.Assertions) was given the type:
+
+        # type: dynamic(nil)
+        # from: test/bird_count_test.exs:58
+        left = BirdCount.total([4])
+
+    where "right" (context ExUnit.Assertions) was given the type:
+
+        # type: integer()
+        # from: test/bird_count_test.exs:58
+        right = 4
+
+    While Elixir can compare across all types, you are comparing across types which are always disjoint, and the result is either always true or always false
+
+    typing violation found at:
+    │
+ 58 │       assert BirdCount.total([4]) == 4
+    │                                   ~
+    │
+    └─ test/bird_count_test.exs:58:35: BirdCountTest."test total/1 sums up bird counts"/1
+
+    warning: comparison between distinct types found:
+
+        left == right
+
+    given types:
+
+        dynamic(nil) == integer()
+
+    where "left" (context ExUnit.Assertions) was given the type:
+
+        # type: dynamic(nil)
+        # from: test/bird_count_test.exs:66
+        left = BirdCount.busy_days([])
+
+    where "right" (context ExUnit.Assertions) was given the type:
+
+        # type: integer()
+        # from: test/bird_count_test.exs:66
+        right = 0
+
+    While Elixir can compare across all types, you are comparing across types which are always disjoint, and the result is either always true or always false
+
+    typing violation found at:
+    │
+ 66 │       assert BirdCount.busy_days([]) == 0
+    │                                      ~
+    │
+    └─ test/bird_count_test.exs:66:38: BirdCountTest."test busy_days/1 zero if no bird watching data recorded"/1
+
+    warning: comparison between distinct types found:
+
+        left == right
+
+    given types:
+
+        dynamic(nil) == integer()
+
+    where "left" (context ExUnit.Assertions) was given the type:
+
+        # type: dynamic(nil)
+        # from: test/bird_count_test.exs:71
+        left = BirdCount.busy_days([1])
+
+    where "right" (context ExUnit.Assertions) was given the type:
+
+        # type: integer()
+        # from: test/bird_count_test.exs:71
+        right = 0
+
+    While Elixir can compare across all types, you are comparing across types which are always disjoint, and the result is either always true or always false
+
+    typing violation found at:
+    │
+ 71 │       assert BirdCount.busy_days([1]) == 0
+    │                                       ~
+    │
+    └─ test/bird_count_test.exs:71:39: BirdCountTest."test busy_days/1 counts days with bird count of 5 or more"/1
+
+
+BirdCountTest [test/bird_count_test.exs]
+  * test today/1 returns nil if no bird watching data recorded [L#6]  * test today/1 returns nil if no bird watching data recorded (0.4ms) [L#6]
+  * test today/1 returns today's bird count [L#11]  * test today/1 returns today's bird count (0.7ms) [L#11]
+
+  1) test today/1 returns today's bird count (BirdCountTest)
+     test/bird_count_test.exs:11
+     Assertion with == failed
+     code:  assert BirdCount.today([5]) == 5
+     left:  nil
+     right: 5
+     stacktrace:
+       test/bird_count_test.exs:12: (test)
+
+  * test increment_day_count/1 creates entry for today if no bird watching data recorded [L#19]  * test increment_day_count/1 creates entry for today if no bird watching data recorded (0.00ms) [L#19]
+
+  2) test increment_day_count/1 creates entry for today if no bird watching data recorded (BirdCountTest)
+     test/bird_count_test.exs:19
+     Assertion with == failed
+     code:  assert BirdCount.increment_day_count([]) == [1]
+     left:  nil
+     right: [1]
+     stacktrace:
+       test/bird_count_test.exs:20: (test)
+
+  * test increment_day_count/1 adds 1 to today's bird count [L#24]  * test increment_day_count/1 adds 1 to today's bird count (0.00ms) [L#24]
+
+  3) test increment_day_count/1 adds 1 to today's bird count (BirdCountTest)
+     test/bird_count_test.exs:24
+     Assertion with == failed
+     code:  assert BirdCount.increment_day_count([5]) == [6]
+     left:  nil
+     right: [6]
+     stacktrace:
+       test/bird_count_test.exs:25: (test)
+
+  * test has_day_without_birds?/1 false if no bird watching data recorded [L#32]  * test has_day_without_birds?/1 false if no bird watching data recorded (0.00ms) [L#32]
+
+  4) test has_day_without_birds?/1 false if no bird watching data recorded (BirdCountTest)
+     test/bird_count_test.exs:32
+     Assertion with == failed
+     code:  assert BirdCount.has_day_without_birds?([]) == false
+     left:  nil
+     right: false
+     stacktrace:
+       test/bird_count_test.exs:33: (test)
+
+  * test has_day_without_birds?/1 false if there are no zeros in bird watching data [L#37]  * test has_day_without_birds?/1 false if there are no zeros in bird watching data (0.00ms) [L#37]
+
+  5) test has_day_without_birds?/1 false if there are no zeros in bird watching data (BirdCountTest)
+     test/bird_count_test.exs:37
+     Assertion with == failed
+     code:  assert BirdCount.has_day_without_birds?([1]) == false
+     left:  nil
+     right: false
+     stacktrace:
+       test/bird_count_test.exs:38: (test)
+
+  * test has_day_without_birds?/1 true if there are is at least one zero in bird watching data [L#43]  * test has_day_without_birds?/1 true if there are is at least one zero in bird watching data (0.00ms) [L#43]
+
+  6) test has_day_without_birds?/1 true if there are is at least one zero in bird watching data (BirdCountTest)
+     test/bird_count_test.exs:43
+     Assertion with == failed
+     code:  assert BirdCount.has_day_without_birds?([0]) == true
+     left:  nil
+     right: true
+     stacktrace:
+       test/bird_count_test.exs:44: (test)
+
+  * test total/1 zero if no bird watching data recorded [L#52]  * test total/1 zero if no bird watching data recorded (0.00ms) [L#52]
+
+  7) test total/1 zero if no bird watching data recorded (BirdCountTest)
+     test/bird_count_test.exs:52
+     Assertion with == failed
+     code:  assert BirdCount.total([]) == 0
+     left:  nil
+     right: 0
+     stacktrace:
+       test/bird_count_test.exs:53: (test)
+
+  * test total/1 sums up bird counts [L#57]  * test total/1 sums up bird counts (0.00ms) [L#57]
+
+  8) test total/1 sums up bird counts (BirdCountTest)
+     test/bird_count_test.exs:57
+     Assertion with == failed
+     code:  assert BirdCount.total([4]) == 4
+     left:  nil
+     right: 4
+     stacktrace:
+       test/bird_count_test.exs:58: (test)
+
+  * test busy_days/1 zero if no bird watching data recorded [L#65]  * test busy_days/1 zero if no bird watching data recorded (0.00ms) [L#65]
+
+  9) test busy_days/1 zero if no bird watching data recorded (BirdCountTest)
+     test/bird_count_test.exs:65
+     Assertion with == failed
+     code:  assert BirdCount.busy_days([]) == 0
+     left:  nil
+     right: 0
+     stacktrace:
+       test/bird_count_test.exs:66: (test)
+
+  * test busy_days/1 counts days with bird count of 5 or more [L#70]  * test busy_days/1 counts days with bird count of 5 or more (0.00ms) [L#70]
+
+ 10) test busy_days/1 counts days with bird count of 5 or more (BirdCountTest)
+     test/bird_count_test.exs:70
+     Assertion with == failed
+     code:  assert BirdCount.busy_days([1]) == 0
+     left:  nil
+     right: 0
+     stacktrace:
+       test/bird_count_test.exs:71: (test)
+
+
+Finished in 0.02 seconds (0.00s async, 0.02s sync)
+11 tests, 10 failures
