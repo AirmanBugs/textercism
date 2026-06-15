@@ -67,9 +67,7 @@ defmodule Xrc.ExercismCli do
     dir = Local.exercise_dir(config, track, exercise)
     {cmd, args} = test_command(track)
 
-    status =
-      IO.stream(:stdio, :line)
-      |> run_streamed(cmd, args, dir)
+    status = run_streamed(cmd, args, dir)
 
     if status == 0, do: :ok, else: {:error, status}
   end
@@ -114,8 +112,8 @@ defmodule Xrc.ExercismCli do
     end
   end
 
-  # Run a command in `dir`, piping combined output line-by-line to `sink`.
-  defp run_streamed(sink, cmd, args, dir) do
+  # Run a command in `dir`, writing combined output to stdout as it arrives.
+  defp run_streamed(cmd, args, dir) do
     port =
       Port.open({:spawn_executable, System.find_executable(cmd)}, [
         :binary,
@@ -126,14 +124,14 @@ defmodule Xrc.ExercismCli do
         :hide
       ])
 
-    stream_loop(port, sink)
+    stream_loop(port)
   end
 
-  defp stream_loop(port, sink) do
+  defp stream_loop(port) do
     receive do
       {^port, {:data, data}} ->
-        IO.write(sink, data)
-        stream_loop(port, sink)
+        IO.write(data)
+        stream_loop(port)
 
       {^port, {:exit_status, status}} ->
         status
