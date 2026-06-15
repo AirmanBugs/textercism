@@ -5,7 +5,7 @@ defmodule Xrc.TUI do
   `print_tracks/1` and `print_exercises/2` used by `xrc tracks` / `xrc list`.
   """
 
-  alias Xrc.{Actions, Api, Config, Local, Status}
+  alias Xrc.{Actions, Api, Config, Local, Menu, Status}
 
   # --- interactive entry points ---
 
@@ -33,11 +33,10 @@ defmodule Xrc.TUI do
 
         Owl.IO.puts("")
 
-        Owl.IO.select(list,
-          label: "Select a track",
-          render_as: &render_track/1
-        )
-        |> Map.get("slug")
+        case Menu.select(list, label: "Select a track (↑/↓, Enter, q to quit)", render: &render_track/1) do
+          nil -> nil
+          track -> Map.get(track, "slug")
+        end
 
       {:error, reason} ->
         fail("Could not fetch tracks: #{inspect(reason)}")
@@ -49,17 +48,20 @@ defmodule Xrc.TUI do
     # Only unlocked exercises are actionable; show locked ones in the list view.
     actionable = Enum.reject(exercises, &(&1.status == :locked))
 
-    Owl.IO.puts(["\n", Status.legend(), "\n"])
+    Owl.IO.puts(["\n", Status.legend()])
 
     selected =
-      Owl.IO.select(actionable ++ [:back],
-        label: "Select an exercise in #{track}",
-        render_as: &render_exercise(&1, config, track)
+      Menu.select(actionable,
+        label: "\nSelect an exercise in #{track} (↑/↓, Enter, q to go back)",
+        render: &render_exercise(&1, config, track)
       )
 
     case selected do
-      :back -> :ok
-      exercise -> action_menu(config, track, exercise)
+      nil -> :ok
+      exercise ->
+        action_menu(config, track, exercise)
+        # Loop back to the exercise list after an action completes.
+        exercise_loop(config, track, exercises)
     end
   end
 
@@ -72,17 +74,17 @@ defmodule Xrc.TUI do
       "\n",
       Status.badge(exercise.status),
       " ",
-      Owl.Data.tag(exercise.title, :bright_white),
+      Owl.Data.tag(exercise.title, [:bright, :white]),
       "  ",
       Owl.Data.tag("(#{Status.label(exercise.status)})", :light_black)
     ])
 
     if exercise.blurb != "", do: Owl.IO.puts([Owl.Data.tag(exercise.blurb, :light_black)])
 
-    {_label, action} =
-      Owl.IO.select(actions, label: "Action", render_as: fn {label, _} -> label end)
-
-    perform(action, config, track, slug)
+    case Menu.select(actions, label: "Action (↑/↓, Enter, q to cancel)", render: fn {label, _} -> label end) do
+      nil -> :ok
+      {_label, action} -> perform(action, config, track, slug)
+    end
   end
 
   # Available actions depend on status + local state.
@@ -153,8 +155,6 @@ defmodule Xrc.TUI do
 
     [marker, " ", String.pad_trailing(slug, 22), " ", progress]
   end
-
-  defp render_exercise(:back, _config, _track), do: Owl.Data.tag("← Back", :light_black)
 
   defp render_exercise(ex, config, track) do
     badge = Status.badge(ex.status)

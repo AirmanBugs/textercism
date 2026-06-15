@@ -71,9 +71,40 @@ defmodule Xrc.Config do
   available, otherwise from the current working directory.
   """
   def repo_root do
+    cond do
+      dir = System.get_env("XRC_REPO_ROOT") -> dir
+      dir = repo_root_from_escript() -> dir
+      dir = repo_root_from_git() -> dir
+      true -> File.cwd!()
+    end
+  end
+
+  # The escript lives at <repo>/tooling/xrc; resolve <repo> from its real path so
+  # `xrc` works from any directory (e.g. via a symlink on PATH).
+  defp repo_root_from_escript do
+    with name when is_list(name) <- :escript.script_name(),
+         path <- List.to_string(name),
+         real <- resolve_symlink(path),
+         "tooling" <- Path.basename(Path.dirname(real)) do
+      real |> Path.dirname() |> Path.dirname()
+    else
+      _ -> nil
+    end
+  rescue
+    _ -> nil
+  end
+
+  defp resolve_symlink(path) do
+    case File.read_link(path) do
+      {:ok, target} -> Path.expand(target, Path.dirname(path))
+      _ -> Path.expand(path)
+    end
+  end
+
+  defp repo_root_from_git do
     case System.cmd("git", ["rev-parse", "--show-toplevel"], stderr_to_stdout: true) do
       {out, 0} -> String.trim(out)
-      _ -> File.cwd!()
+      _ -> nil
     end
   end
 end
