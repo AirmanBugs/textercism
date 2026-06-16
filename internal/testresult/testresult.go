@@ -170,7 +170,7 @@ func (f Failure) AssertionMarkdown() string {
 	case f.Code != "":
 		fmt.Fprintf(&b, "```elixir\n%s\n```\n", f.Code)
 		if f.Left != "" || f.Right != "" {
-			fmt.Fprintf(&b, "- left:  `%s`\n- right: `%s`\n", f.Left, f.Right)
+			fmt.Fprintf(&b, "- your result: `%s`\n- expected:    `%s`\n", f.Left, f.Right)
 		}
 	case f.Message != "":
 		fmt.Fprintf(&b, "%s\n", f.Message)

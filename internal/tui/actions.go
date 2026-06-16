@@ -39,6 +39,11 @@ func (m *model) runAction(kind ActionKind) (tea.Model, tea.Cmd) {
 	track, ex := m.track, m.selected.Slug
 
 	switch kind {
+	case ActionInstructions, ActionHints:
+		// View-only items: the pane already shows them. Enter focuses the pane so
+		// you can scroll/reveal without reaching for Tab.
+		m.paneFocused = true
+		return m, nil
 	case ActionTest:
 		if !exercism.Downloaded(m.cfg, track, ex) {
 			m.status = "Not downloaded — Start it first."
@@ -174,6 +179,30 @@ func (m *model) webCmd(track, ex string) tea.Cmd {
 	return func() tea.Msg {
 		openURL(fmt.Sprintf("https://exercism.org/tracks/%s/exercises/%s", track, ex))
 		return actionDoneMsg{status: "Opened in browser."}
+	}
+}
+
+// openHintDocs opens the unique doc URLs referenced by the currently-revealed
+// hints (so unrevealed hints' links aren't spoiled).
+func (m *model) openHintDocs() tea.Cmd {
+	var urls []string
+	seen := map[string]bool{}
+	for i := 0; i < m.hintsShown && i < len(m.hints.Items); i++ {
+		for _, u := range m.hints.Items[i].Links {
+			if !seen[u] {
+				seen[u] = true
+				urls = append(urls, u)
+			}
+		}
+	}
+	if len(urls) == 0 {
+		return func() tea.Msg { return actionDoneMsg{status: "No doc links in the revealed hints yet."} }
+	}
+	return func() tea.Msg {
+		for _, u := range urls {
+			openURL(u)
+		}
+		return actionDoneMsg{status: fmt.Sprintf("Opened %d doc link(s).", len(urls))}
 	}
 }
 

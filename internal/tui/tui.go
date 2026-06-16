@@ -6,9 +6,11 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/AirmanBugs/textercism/internal/config"
 	"github.com/AirmanBugs/textercism/internal/exercism"
+	"github.com/AirmanBugs/textercism/internal/hints"
 	"github.com/AirmanBugs/textercism/internal/render"
 	"github.com/AirmanBugs/textercism/internal/sync"
 	"github.com/AirmanBugs/textercism/internal/testresult"
@@ -31,6 +33,8 @@ const (
 	ActionSubmit
 	ActionPause
 	ActionWeb
+	ActionInstructions
+	ActionHints
 )
 
 type screen int
@@ -55,8 +59,10 @@ type model struct {
 	stacked  bool           // true when the terminal is too narrow for side-by-side
 	status   string         // transient status line on the action screen
 
-	pane           paneMode          // what the right pane shows: instructions or test output
+	pane           paneMode          // what the right pane shows
 	paneFocused    bool              // true when the right pane (not the action list) has focus
+	hints          hints.Hints       // parsed hints for the selected exercise
+	hintsShown     int               // how many hint bullets are revealed
 	instructions   string            // rendered instructions (cached for the selected exercise)
 	testResult     testresult.Result // last parsed test result (clean view rendered from this)
 	testRaw        string            // rendered raw test output (for the "r" toggle)
@@ -78,6 +84,7 @@ type paneMode int
 
 const (
 	paneInstructions paneMode = iota
+	paneHints
 	paneTestOutput
 )
 
@@ -171,10 +178,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.status = msg.status
 			}
 			m.list = newActionList(m.cfg, m.track, m.selected, m.showSync, 0, 0)
-			if m.pane == paneInstructions {
-				m.viewport.SetContent(m.renderInstructions(m.viewport.Width))
-				m.viewport.GotoTop()
-			}
+			m.loadHints() // HINTS.md is on disk now
+			m.viewport.SetContent(m.paneContent())
+			m.viewport.GotoTop()
 			m.relayout()
 		}
 		return m, nil
@@ -221,13 +227,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Toggle focus between the action list and the right pane.
 				m.paneFocused = !m.paneFocused
 				return m, nil
-			case "i":
-				if m.pane == paneTestOutput {
-					m.pane = paneInstructions
-					m.paneFocused = false
+			case "n":
+				// Reveal the next hint when the hints pane is showing.
+				if m.pane == paneHints && m.hintsShown < len(m.hints.Items) {
+					m.hintsShown++
 					m.viewport.SetContent(m.paneContent())
-					m.viewport.GotoTop()
 					return m, nil
+				}
+			case "o":
+				// Open the docs referenced by the revealed hints in the browser.
+				if m.pane == paneHints {
+					return m, m.openHintDocs()
 				}
 			case "r":
 				// Toggle raw vs. clean test output when showing test results.
@@ -268,7 +278,28 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.list, cmd = m.list.Update(msg)
+	// On the action screen, the right pane follows the highlighted item.
+	if m.screen == screenActions {
+		m.syncPaneToSelection()
+	}
 	return m, cmd
+}
+
+// syncPaneToSelection sets the right pane's mode to match the currently
+// highlighted action item, and refreshes the pane content if the mode changed.
+func (m *model) syncPaneToSelection() {
+	it, ok := m.list.SelectedItem().(actionItem)
+	if !ok {
+		return
+	}
+	want := paneFor(it.kind)
+	if want == m.pane {
+		return
+	}
+	m.pane = want
+	m.showRawTest = false
+	m.viewport.SetContent(m.paneContent())
+	m.viewport.GotoTop()
 }
 
 // relayout sizes the list and instructions viewport for the current screen and
@@ -306,13 +337,20 @@ func (m *model) relayout() {
 
 // paneContent returns the rendered text for the right pane based on its mode.
 func (m *model) paneContent() string {
-	if m.pane == paneTestOutput {
+	switch m.pane {
+	case paneTestOutput:
 		if m.showRawTest {
 			return m.testRaw
 		}
+		if len(m.testResult.Tests) == 0 {
+			return render.Markdown("_No test run yet — press Enter on **Run tests** to run them._", m.viewport.Width)
+		}
 		return renderTestView(m.testResult, m.viewport.Width, m.showAssertions)
+	case paneHints:
+		return renderHintsView(m.hints, m.hintsShown, m.viewport.Width)
+	default:
+		return m.renderInstructions(m.viewport.Width)
 	}
-	return m.renderInstructions(m.viewport.Width)
 }
 
 var (
@@ -334,13 +372,14 @@ func (m *model) View() string {
 	} else {
 		hint = "↑/↓ select · enter run · tab scroll pane · esc back"
 	}
-	if m.pane == paneTestOutput {
+	switch m.pane {
+	case paneTestOutput:
 		raw := "r raw"
 		if m.showRawTest {
 			raw = "r clean"
 		}
-		paneHints := "i instructions · " + raw
-		if !m.showRawTest {
+		paneHints := raw
+		if !m.showRawTest && !m.testResult.AllPassed && len(m.testResult.Tests) > 0 {
 			assert := "a assertions"
 			if m.showAssertions {
 				assert = "a hide"
@@ -348,6 +387,15 @@ func (m *model) View() string {
 			paneHints += " · " + assert
 		}
 		hint = paneHints + " · " + hint
+	case paneHints:
+		ph := ""
+		if m.hintsShown < len(m.hints.Items) {
+			ph = "n next hint · "
+		}
+		if len(m.hints.Docs) > 0 {
+			ph += "o open docs · "
+		}
+		hint = ph + hint
 	}
 	line := footerStyle.Render(hint)
 	switch {
@@ -456,6 +504,7 @@ func (m *model) enterActions(ex exercism.Exercise) tea.Cmd {
 	m.list = newActionList(m.cfg, m.track, ex, m.showSync, m.width, m.height-1)
 	m.viewport = viewport.New(m.width, m.height)
 	m.screen = screenActions
+	m.loadHints()
 
 	if exercism.Downloaded(m.cfg, m.track, ex.Slug) {
 		m.instructions = "" // rendered lazily in relayout at the right width
@@ -468,6 +517,21 @@ func (m *model) enterActions(ex exercism.Exercise) tea.Cmd {
 	m.relayout()
 	m.viewport.SetContent(render.Markdown("# "+ex.Title+"\n\n_Loading instructions…_", m.viewport.Width))
 	return m.downloadForInstructions(m.track, ex.Slug)
+}
+
+// loadHints parses the exercise's HINTS.md (if present), starting with one hint
+// revealed.
+func (m *model) loadHints() {
+	dir := exercism.ExerciseDir(m.cfg, m.track, m.selected.Slug)
+	if h, ok := hints.ParseFile(filepath.Join(dir, "HINTS.md")); ok {
+		m.hints = h
+	} else {
+		m.hints = hints.Hints{}
+	}
+	m.hintsShown = 1
+	if len(m.hints.Items) == 0 {
+		m.hintsShown = 0
+	}
 }
 
 // renderInstructions returns the rendered README for the selected exercise, or a
@@ -559,21 +623,24 @@ func newActionList(cfg *config.Config, track string, ex exercism.Exercise, showS
 }
 
 func actionsFor(display exercism.DisplayStatus, local exercism.LocalState, showSync bool) []list.Item {
-	var items []list.Item
+	// View items first: highlighting them shows content in the pane (no Enter
+	// needed). Then the actions that run on Enter.
+	items := []list.Item{
+		actionItem{"Instructions", "Read the exercise instructions", ActionInstructions},
+		actionItem{"Hints", "Reveal hints one at a time", ActionHints},
+		actionItem{"Run tests", "Show the last run · enter to run again", ActionTest},
+	}
+
 	switch {
 	case local == exercism.NotOnDisk && display == exercism.DNotStarted:
 		items = append(items, actionItem{"Start", "Download + open VS Code", ActionStart})
 	case local == exercism.NotOnDisk:
-		// Server-started but nothing local: continue downloads the stub.
 		items = append(items, actionItem{"Continue", "Download stub + open VS Code", ActionStart})
 	default:
 		items = append(items, actionItem{"Continue", "Open in VS Code", ActionOpen})
 	}
 
-	items = append(items,
-		actionItem{"Run tests", "Run the exercise's tests", ActionTest},
-		actionItem{"Submit", "Test, then submit to Exercism", ActionSubmit},
-	)
+	items = append(items, actionItem{"Submit", "Test, then submit to Exercism", ActionSubmit})
 	if showSync {
 		items = append(items, actionItem{"Pause & sync", "Save draft to your sync backend", ActionPause})
 	}
@@ -582,4 +649,17 @@ func actionsFor(display exercism.DisplayStatus, local exercism.LocalState, showS
 		actionItem{"Open in browser", "Open the exercise/solution page", ActionWeb},
 	)
 	return items
+}
+
+// paneFor returns the pane mode that the given action item should display when
+// highlighted. Non-view actions keep instructions visible as a neutral default.
+func paneFor(kind ActionKind) paneMode {
+	switch kind {
+	case ActionHints:
+		return paneHints
+	case ActionTest:
+		return paneTestOutput
+	default:
+		return paneInstructions
+	}
 }

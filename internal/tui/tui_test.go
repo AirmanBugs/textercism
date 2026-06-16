@@ -58,15 +58,15 @@ func TestExerciseToAction(t *testing.T) {
 		t.Fatalf("expected lasagna selected, got %q", m.selected.Slug)
 	}
 
-	// Choosing an action runs it in-TUI (returns a command) and stays on the
-	// action screen rather than quitting.
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// The first item is the Instructions view; Enter on it focuses the pane and
+	// stays on the action screen (no command, doesn't quit).
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(*model)
-	if cmd == nil {
-		t.Fatalf("expected a command from running an action")
-	}
 	if m.screen != screenActions {
 		t.Fatalf("expected to stay on action screen, got %v", m.screen)
+	}
+	if !m.paneFocused {
+		t.Fatalf("expected Enter on Instructions to focus the pane")
 	}
 }
 
@@ -142,20 +142,24 @@ func hasAction(items []list.Item, kind ActionKind) bool {
 }
 
 func TestActionsForStatus(t *testing.T) {
-	// Not started, nothing local -> first action is Start.
+	// View items (Instructions, Hints, Run tests) always lead the list.
 	items := actionsFor(exercism.DNotStarted, exercism.NotOnDisk, false)
-	if got := items[0].(actionItem); got.kind != ActionStart {
-		t.Fatalf("not-started first action = %v, want Start", got.kind)
+	for i, want := range []ActionKind{ActionInstructions, ActionHints, ActionTest} {
+		if got := items[i].(actionItem); got.kind != want {
+			t.Fatalf("item %d = %v, want %v", i, got.kind, want)
+		}
 	}
-	// Server-started but nothing local -> Continue that downloads (ActionStart).
-	items = actionsFor(exercism.DStartedServer, exercism.NotOnDisk, false)
-	if got := items[0].(actionItem); got.kind != ActionStart {
-		t.Fatalf("server-started/no-disk first action = %v, want Start(download)", got.kind)
+
+	// Not started / server-started with nothing local -> a Start action.
+	if !hasAction(actionsFor(exercism.DNotStarted, exercism.NotOnDisk, false), ActionStart) {
+		t.Fatal("not-started should offer Start")
 	}
-	// Downloaded with edits -> first action is Open (continue without re-download).
-	items = actionsFor(exercism.DInProgress, exercism.OnDiskEdited, false)
-	if got := items[0].(actionItem); got.kind != ActionOpen {
-		t.Fatalf("downloaded first action = %v, want Open", got.kind)
+	if !hasAction(actionsFor(exercism.DStartedServer, exercism.NotOnDisk, false), ActionStart) {
+		t.Fatal("server-started/no-disk should offer Start (download)")
+	}
+	// Downloaded -> Open (continue without re-download).
+	if !hasAction(actionsFor(exercism.DInProgress, exercism.OnDiskEdited, false), ActionOpen) {
+		t.Fatal("downloaded should offer Open")
 	}
 }
 

@@ -80,13 +80,13 @@ Merged, that gives:
   relies on undocumented *write* endpoints.
 - **Start / continue** opens a **single-folder** VS Code window (one language server,
   avoiding the multi-root workspace crash).
-- **Instructions** render in the terminal via [Glamour](https://github.com/charmbracelet/glamour):
-  selecting an exercise shows its rendered instructions in a pane **beside the action
-  list** (stacked on narrow terminals). Scroll the pane with the trackpad/wheel, or
-  press **Tab** to focus it and use ↑/↓. Not-yet-downloaded
-  exercises are fetched automatically so the full instructions appear. `textercism
-  read <track> <ex>` also prints the rendered README to stdout. The `web` command
-  opens the exercise on exercism.org in a browser.
+- **The right pane follows the highlighted action.** Highlight **Instructions** to read
+  the rendered README, **Hints** to reveal hints one at a time (press `n` for the next,
+  `o` to open the referenced docs in your browser), or **Run tests** to see the last
+  run. Scroll the pane with the trackpad/wheel, or press **Tab** to focus it and use
+  ↑/↓. Instructions are rendered via [Glamour](https://github.com/charmbracelet/glamour);
+  not-yet-downloaded exercises are fetched automatically. `textercism read <track> <ex>`
+  also prints the rendered README to stdout.
 - **Actions run in the TUI.** Start/open/restart/pause run in the background with a
   status line; Submit runs tests then submits.
 - **Run tests** parses the `mix test --trace` output into a clean result in the
