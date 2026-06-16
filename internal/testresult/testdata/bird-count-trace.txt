@@ -1,3 +1,4 @@
+Compiling 1 file (.ex)
     warning: variable "list" is unused (if the variable is not meant to be used, prefix it with an underscore)
     │
   2 │   def today(list) do
@@ -33,6 +34,7 @@
     │
     └─ lib/bird_count.ex:18:17: BirdCount.busy_days/1
 
+Generated bird_count app
 Running ExUnit with seed: 0, max_cases: 1
 Excluding tags: [:pending]
 
@@ -328,8 +330,8 @@ Excluding tags: [:pending]
 
 
 BirdCountTest [test/bird_count_test.exs]
-  * test today/1 returns nil if no bird watching data recorded [L#6]  * test today/1 returns nil if no bird watching data recorded (0.4ms) [L#6]
-  * test today/1 returns today's bird count [L#11]  * test today/1 returns today's bird count (0.7ms) [L#11]
+  * test today/1 returns nil if no bird watching data recorded [L#6]  * test today/1 returns nil if no bird watching data recorded (0.3ms) [L#6]
+  * test today/1 returns today's bird count [L#11]  * test today/1 returns today's bird count (0.4ms) [L#11]
 
   1) test today/1 returns today's bird count (BirdCountTest)
      test/bird_count_test.exs:11
@@ -440,5 +442,5 @@ BirdCountTest [test/bird_count_test.exs]
        test/bird_count_test.exs:71: (test)
 
 
-Finished in 0.02 seconds (0.00s async, 0.02s sync)
+Finished in 0.01 seconds (0.00s async, 0.01s sync)
 11 tests, 10 failures

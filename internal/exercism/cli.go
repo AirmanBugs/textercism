@@ -56,6 +56,19 @@ func testCommand(track string) (string, []string) {
 	return "exercism", []string{"test"}
 }
 
+// TestCmdTrace is like TestCmd but, for elixir, adds --trace so every test is
+// listed by name (the parser uses this to show passing tests too). Non-elixir
+// tracks fall back to the plain test command.
+func TestCmdTrace(cfg *config.Config, track, exercise string) *exec.Cmd {
+	name, args := testCommand(track)
+	if track == "elixir" {
+		args = append(args, "--trace")
+	}
+	cmd := exec.Command(name, args...)
+	cmd.Dir = ExerciseDir(cfg, track, exercise)
+	return cmd
+}
+
 // Submit runs `exercism submit` on the exercise's solution files in place. The
 // exercise already lives in the Exercism workspace, so no copy is needed.
 func Submit(cfg *config.Config, track, exercise string) (string, error) {

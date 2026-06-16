@@ -17,12 +17,12 @@ import (
 // actionDoneMsg carries the result of a background action back to the model.
 type actionDoneMsg struct{ status string }
 
-// testDoneMsg carries parsed test results to show in the right pane: a clean
-// rendered summary, the raw output (for the "r" toggle), and a footer line.
+// testDoneMsg carries parsed test results to show in the right pane.
 type testDoneMsg struct {
-	status string // footer summary, e.g. "✗ 10 of 11 failed"
-	clean  string // rendered clean view (markdown -> ANSI)
-	raw    string // raw, lightly cleaned output
+	status string            // footer summary, e.g. "✗ 10 of 11 failed"
+	result testresult.Result // parsed result, for re-rendering on the assertions toggle
+	clean  string            // rendered clean view (markdown -> ANSI)
+	raw    string            // raw, lightly cleaned output
 	width  int
 }
 
@@ -63,17 +63,18 @@ func (m *model) runAction(kind ActionKind) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// testCmd runs the exercise's tests in the background, parses the output into a
-// clean result, and returns both the clean render and the raw output.
+// testCmd runs the exercise's tests in the background, parses the output, and
+// returns the parsed result plus the raw output for the pane.
 func (m *model) testCmd(track, ex string) tea.Cmd {
 	cfg, width := m.cfg, m.viewport.Width
+	showAssertions := m.showAssertions
 	return func() tea.Msg {
-		out, _ := exercism.TestCmd(cfg, track, ex).CombinedOutput()
+		out, _ := exercism.TestCmdTrace(cfg, track, ex).CombinedOutput()
 		res := testresult.Parse(string(out))
 
-		clean := render.Markdown(res.Markdown(), width)
+		clean := render.Markdown(res.Markdown(showAssertions), width)
 		raw := render.Markdown("```\n"+cleanRaw(string(out))+"\n```\n", width)
-		return testDoneMsg{status: res.Summary(), clean: clean, raw: raw, width: width}
+		return testDoneMsg{status: res.Summary(), result: res, clean: clean, raw: raw, width: width}
 	}
 }
 

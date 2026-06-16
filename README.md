@@ -89,10 +89,11 @@ Merged, that gives:
   opens the exercise on exercism.org in a browser.
 - **Actions run in the TUI.** Start/open/restart/pause run in the background with a
   status line; Submit runs tests then submits.
-- **Run tests** parses the `mix test` output into a clean result in the right pane —
-  a pass/fail banner plus each failed test's name, location, and assertion
-  (code, left, right) — with compile warnings and stacktraces stripped. Press `r`
-  for the raw output, `i` to return to instructions.
+- **Run tests** parses the `mix test --trace` output into a clean result in the
+  right pane: a pass/fail banner and a **numbered list of every test** with ✓/✗.
+  Press `a` to expand assertion detail (code, left, right) on failures, `r` for
+  raw output, `i` to return to instructions.
+- **Esc** goes back a screen throughout.
 - **Submit** runs the tests, then `exercism submit` in place.
 - **Drafts** (in-progress, unsubmitted code) are the only thing that needs syncing,
   since Exercism doesn't store them. Cross-device sync is handled by a pluggable

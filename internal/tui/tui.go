@@ -11,6 +11,8 @@ import (
 	"github.com/AirmanBugs/textercism/internal/exercism"
 	"github.com/AirmanBugs/textercism/internal/render"
 	"github.com/AirmanBugs/textercism/internal/sync"
+	"github.com/AirmanBugs/textercism/internal/testresult"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -51,12 +53,14 @@ type model struct {
 	stacked  bool           // true when the terminal is too narrow for side-by-side
 	status   string         // transient status line on the action screen
 
-	pane         paneMode // what the right pane shows: instructions or test output
-	paneFocused  bool     // true when the right pane (not the action list) has focus
-	instructions string   // rendered instructions (cached for the selected exercise)
-	testClean    string   // rendered clean test results
-	testRaw      string   // rendered raw test output (for the "r" toggle)
-	showRawTest  bool     // whether the test pane shows raw output
+	pane           paneMode          // what the right pane shows: instructions or test output
+	paneFocused    bool              // true when the right pane (not the action list) has focus
+	instructions   string            // rendered instructions (cached for the selected exercise)
+	testResult     testresult.Result // last parsed test result (for re-rendering)
+	testClean      string            // rendered clean test results
+	testRaw        string            // rendered raw test output (for the "r" toggle)
+	showRawTest    bool              // whether the test pane shows raw output
+	showAssertions bool              // whether the clean view expands assertion detail
 
 	track     string
 	exercises []exercism.Exercise
@@ -141,6 +145,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Tests finished: show the clean results in the right pane and focus it so
 		// the user can scroll immediately.
 		m.status = msg.status
+		m.testResult = msg.result
 		m.testClean = msg.clean
 		m.testRaw = msg.raw
 		m.showRawTest = false
@@ -191,7 +196,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
-		case "q", "esc":
+		case "esc":
 			return m.goBack()
 		}
 
@@ -213,6 +218,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Toggle raw vs. clean test output when showing test results.
 				if m.pane == paneTestOutput {
 					m.showRawTest = !m.showRawTest
+					m.viewport.SetContent(m.paneContent())
+					m.viewport.GotoTop()
+					return m, nil
+				}
+			case "a":
+				// Toggle assertion detail in the clean test view.
+				if m.pane == paneTestOutput && !m.showRawTest {
+					m.showAssertions = !m.showAssertions
+					m.testClean = render.Markdown(m.testResult.Markdown(m.showAssertions), m.viewport.Width)
 					m.viewport.SetContent(m.paneContent())
 					m.viewport.GotoTop()
 					return m, nil
@@ -302,16 +316,24 @@ func (m *model) View() string {
 	// Footer reflects what the keys do given the current focus and pane.
 	var hint string
 	if m.paneFocused {
-		hint = "↑/↓ scroll · tab actions · q back"
+		hint = "↑/↓ scroll · tab actions · esc back"
 	} else {
-		hint = "↑/↓ select · enter run · tab scroll pane · q back"
+		hint = "↑/↓ select · enter run · tab scroll pane · esc back"
 	}
 	if m.pane == paneTestOutput {
 		raw := "r raw"
 		if m.showRawTest {
 			raw = "r clean"
 		}
-		hint = "i instructions · " + raw + " · " + hint
+		paneHints := "i instructions · " + raw
+		if !m.showRawTest {
+			assert := "a assertions"
+			if m.showAssertions {
+				assert = "a hide"
+			}
+			paneHints += " · " + assert
+		}
+		hint = paneHints + " · " + hint
 	}
 	line := footerStyle.Render(hint)
 	if m.status != "" {
@@ -484,6 +506,10 @@ func newList(items []list.Item, title string, w, h int) list.Model {
 		Foreground(lipgloss.Color("6")).Bold(true)
 	l.SetShowStatusBar(true)
 	l.SetFilteringEnabled(true)
+	// We drive navigation/quit ourselves (Esc to go back), so disable the list's
+	// own q/esc quit binding and its mention in help.
+	l.KeyMap.Quit = key.NewBinding()
+	l.DisableQuitKeybindings()
 	if w > 0 && h > 0 {
 		l.SetSize(w, h)
 	}

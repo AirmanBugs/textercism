@@ -12,9 +12,8 @@ import (
 	"strings"
 )
 
-// Failure is one failed test, with the high-value detail.
+// Failure is the assertion detail for a failed test.
 type Failure struct {
-	Name     string // e.g. "today/1 returns today's bird count"
 	Location string // e.g. "test/bird_count_test.exs:11"
 	Code     string // the failing assertion, e.g. "assert BirdCount.today([5]) == 5"
 	Left     string // left value (if the failure reports one)
@@ -22,25 +21,35 @@ type Failure struct {
 	Message  string // a non-assertion message, when there's no left/right
 }
 
+// Test is one test in run order, with its outcome and (if failed) detail.
+type Test struct {
+	Name    string // e.g. "today/1 returns today's bird count"
+	Line    string // source line, e.g. "6" (from [L#6])
+	Passed  bool
+	Failure Failure // populated when Passed is false
+}
+
 // Result is the parsed outcome of a test run.
 type Result struct {
-	Total    int
-	Failures int
-	Failed   []Failure
-	Passed   bool
+	Total     int
+	Failures  int
+	Tests     []Test // every test, in run order (from --trace)
+	AllPassed bool
 }
 
 var (
 	// "  1) test today/1 returns today's bird count (BirdCountTest)"
 	failureHeader = regexp.MustCompile(`^\s*\d+\)\s+test\s+(.*?)\s+\([^)]*\)\s*$`)
-	// "11 tests, 10 failures" (also handles "1 test, 0 failures", excluded/skipped suffixes)
+	// "11 tests, 10 failures" (also handles excluded/skipped suffixes)
 	summaryLine = regexp.MustCompile(`(\d+)\s+tests?,\s+(\d+)\s+failures?`)
 	// "test/bird_count_test.exs:11"
 	locationLine = regexp.MustCompile(`^\s*((?:test|lib)/\S+\.exs?:\d+)\s*$`)
 	fieldLine    = regexp.MustCompile(`^\s*(code|left|right):\s*(.*)$`)
+	// "  * test today/1 returns today's bird count (0.4ms) [L#11]" (--trace)
+	traceLine = regexp.MustCompile(`^\s*\* test (.*) \([0-9.]+m?s\) \[L#(\d+)\]\s*$`)
 )
 
-// Parse turns raw `mix test` output into a Result.
+// Parse turns raw `mix test --trace` output into a Result.
 func Parse(raw string) Result {
 	var res Result
 
@@ -49,35 +58,49 @@ func Parse(raw string) Result {
 		res.Total, _ = strconv.Atoi(m[1])
 		res.Failures, _ = strconv.Atoi(m[2])
 	}
-	res.Passed = res.Failures == 0
+	res.AllPassed = res.Failures == 0
 
-	// Then walk the failure blocks. A block starts at a "N) test ..." header and
-	// runs until the next header, a summary, or a blank-line gap followed by
-	// progress output.
-	scanner := bufio.NewScanner(strings.NewReader(raw))
-	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
-
+	// Walk the failure blocks into a map keyed by test name. A block starts at a
+	// "N) test ..." header and ends at the stacktrace.
+	failures := map[string]Failure{}
+	var curName string
 	var cur *Failure
 	flush := func() {
 		if cur != nil {
-			res.Failed = append(res.Failed, *cur)
-			cur = nil
+			failures[curName] = *cur
+			cur, curName = nil, ""
 		}
 	}
 
+	scanner := bufio.NewScanner(strings.NewReader(raw))
+	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
+
+	var order []Test // tests in run order, from --trace lines
 	for scanner.Scan() {
 		line := scanner.Text()
 
+		// --trace prints each test name twice on one physical line, joined by a
+		// carriage return (first without timing, then with). Take the last \r
+		// segment so we match the completed "(N ms) [L#N]" form cleanly.
+		if i := strings.LastIndex(line, "\r"); i >= 0 {
+			line = line[i+1:]
+		}
+
+		// --trace lists every test (passed or failed) with its line number.
+		if m := traceLine.FindStringSubmatch(line); m != nil {
+			order = append(order, Test{Name: strings.TrimSpace(m[1]), Line: m[2]})
+			continue
+		}
+
 		if m := failureHeader.FindStringSubmatch(line); m != nil {
 			flush()
-			cur = &Failure{Name: strings.TrimSpace(m[1])}
+			curName = strings.TrimSpace(m[1])
+			cur = &Failure{}
 			continue
 		}
 		if cur == nil {
 			continue
 		}
-
-		// Stacktrace ends the useful part of a block.
 		if strings.TrimSpace(line) == "stacktrace:" {
 			flush()
 			continue
@@ -99,13 +122,22 @@ func Parse(raw string) Result {
 			}
 			continue
 		}
-		// A line like "Assertion with == failed" or "match (=) failed" is a
-		// message we keep only if there's no structured code/left/right.
 		if t := strings.TrimSpace(line); strings.HasSuffix(t, "failed") && cur.Message == "" {
 			cur.Message = t
 		}
 	}
 	flush()
+
+	// Build the ordered test list, marking each pass/fail by name.
+	for _, t := range order {
+		if f, failed := failures[t.Name]; failed {
+			t.Passed = false
+			t.Failure = f
+		} else {
+			t.Passed = true
+		}
+		res.Tests = append(res.Tests, t)
+	}
 
 	return res
 }
@@ -113,28 +145,42 @@ func Parse(raw string) Result {
 // Summary is a one-line result for the footer/status, e.g. "✓ 8 passed" or
 // "✗ 10 of 11 failed".
 func (r Result) Summary() string {
-	if r.Passed {
+	if r.AllPassed {
 		return fmt.Sprintf("✓ %d passed", r.Total)
 	}
 	return fmt.Sprintf("✗ %d of %d failed", r.Failures, r.Total)
 }
 
-// Markdown renders the result as clean markdown for the instructions pane: a
-// banner, then each failed test with its location and assertion detail.
-func (r Result) Markdown() string {
+// Markdown renders the result as clean markdown: a banner, then a numbered list
+// of every test with ✓/✗. When showAssertions is true, failed tests also show
+// their location and assertion detail (code, left, right).
+func (r Result) Markdown(showAssertions bool) string {
 	var b strings.Builder
 
-	if r.Passed {
-		fmt.Fprintf(&b, "# ✓ All %d tests passed\n", r.Total)
+	if r.AllPassed {
+		fmt.Fprintf(&b, "# ✓ All %d tests passed\n\n", r.Total)
+	} else {
+		fmt.Fprintf(&b, "# ✗ %d of %d tests failed\n\n", r.Failures, r.Total)
+	}
+
+	// Fall back to the failure list if --trace gave us no ordered tests.
+	if len(r.Tests) == 0 {
 		return b.String()
 	}
 
-	fmt.Fprintf(&b, "# ✗ %d of %d tests failed\n\n", r.Failures, r.Total)
+	for i, t := range r.Tests {
+		mark := "✓"
+		if !t.Passed {
+			mark = "✗"
+		}
+		fmt.Fprintf(&b, "%d. %s %s\n", i+1, mark, t.Name)
 
-	for _, f := range r.Failed {
-		fmt.Fprintf(&b, "### %s\n", f.Name)
+		if t.Passed || !showAssertions {
+			continue
+		}
+		f := t.Failure
 		if f.Location != "" {
-			fmt.Fprintf(&b, "`%s`\n\n", f.Location)
+			fmt.Fprintf(&b, "   `%s`\n", f.Location)
 		}
 		switch {
 		case f.Code != "":
@@ -143,9 +189,8 @@ func (r Result) Markdown() string {
 				fmt.Fprintf(&b, "- left:  `%s`\n- right: `%s`\n", f.Left, f.Right)
 			}
 		case f.Message != "":
-			fmt.Fprintf(&b, "%s\n", f.Message)
+			fmt.Fprintf(&b, "   %s\n", f.Message)
 		}
-		b.WriteString("\n")
 	}
 
 	return b.String()

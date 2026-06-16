@@ -32,8 +32,8 @@ func send(m *model, key string) *model {
 		msg = tea.KeyMsg{Type: tea.KeyEnter}
 	case "down":
 		msg = tea.KeyMsg{Type: tea.KeyDown}
-	case "q":
-		msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}}
+	case "esc":
+		msg = tea.KeyMsg{Type: tea.KeyEsc}
 	case "tab":
 		msg = tea.KeyMsg{Type: tea.KeyTab}
 	}
@@ -76,7 +76,7 @@ func TestBackNavigation(t *testing.T) {
 	if m.screen != screenActions {
 		t.Fatalf("setup: expected actions screen")
 	}
-	m = send(m, "q") // back -> exercises
+	m = send(m, "esc") // back -> exercises
 	if m.screen != screenExercises {
 		t.Fatalf("expected back to exercises, got %v", m.screen)
 	}
