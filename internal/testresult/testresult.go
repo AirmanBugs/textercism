@@ -18,7 +18,8 @@ type Failure struct {
 	Code     string // the failing assertion, e.g. "assert BirdCount.today([5]) == 5"
 	Left     string // left value (if the failure reports one)
 	Right    string // right value
-	Message  string // a non-assertion message, when there's no left/right
+	Message  string // a non-assertion message (e.g. "Assertion with == failed")
+	Error    string // a raised exception, e.g. "(MatchError) no match of right hand side value: []"
 }
 
 // Test is one test in run order, with its outcome and (if failed) detail.
@@ -45,6 +46,8 @@ var (
 	// "test/bird_count_test.exs:11"
 	locationLine = regexp.MustCompile(`^\s*((?:test|lib)/\S+\.exs?:\d+)\s*$`)
 	fieldLine    = regexp.MustCompile(`^\s*(code|left|right):\s*(.*)$`)
+	// "     ** (MatchError) no match of right hand side value:"
+	errorRe = regexp.MustCompile(`^\s*\*\*\s+(\(.*)$`)
 	// "  * test today/1 returns today's bird count (0.4ms) [L#11]" (--trace)
 	traceLine = regexp.MustCompile(`^\s*\* test (.*) \([0-9.]+m?s\) \[L#(\d+)\]\s*$`)
 )
@@ -111,6 +114,11 @@ func Parse(raw string) Result {
 				continue
 			}
 		}
+		// A raised exception: "** (MatchError) no match of right hand side value:"
+		if m := errorRe.FindStringSubmatch(line); m != nil {
+			cur.Error = strings.TrimSpace(m[1])
+			continue
+		}
 		if m := fieldLine.FindStringSubmatch(line); m != nil {
 			switch m[1] {
 			case "code":
@@ -122,7 +130,14 @@ func Parse(raw string) Result {
 			}
 			continue
 		}
-		if t := strings.TrimSpace(line); strings.HasSuffix(t, "failed") && cur.Message == "" {
+		t := strings.TrimSpace(line)
+		// The value following an exception (e.g. the "[]" under a MatchError) — fold
+		// it onto the error line until we reach the code/fields.
+		if cur.Error != "" && cur.Code == "" && t != "" && !strings.HasSuffix(t, "failed") {
+			cur.Error += " " + t
+			continue
+		}
+		if strings.HasSuffix(t, "failed") && cur.Message == "" {
 			cur.Message = t
 		}
 	}
@@ -166,13 +181,16 @@ func (f Failure) AssertionMarkdown() string {
 	if f.Location != "" {
 		fmt.Fprintf(&b, "`%s`\n\n", f.Location)
 	}
-	switch {
-	case f.Code != "":
+	if f.Code != "" {
 		fmt.Fprintf(&b, "```elixir\n%s\n```\n", f.Code)
-		if f.Left != "" || f.Right != "" {
-			fmt.Fprintf(&b, "- your result: `%s`\n- expected:    `%s`\n", f.Left, f.Right)
-		}
-	case f.Message != "":
+	}
+	switch {
+	case f.Error != "":
+		// A raised exception — the code crashed rather than returning a value.
+		fmt.Fprintf(&b, "- error: `%s`\n", f.Error)
+	case f.Left != "" || f.Right != "":
+		fmt.Fprintf(&b, "- your result: `%s`\n- expected:    `%s`\n", f.Left, f.Right)
+	case f.Message != "" && f.Code == "":
 		fmt.Fprintf(&b, "%s\n", f.Message)
 	}
 	return b.String()

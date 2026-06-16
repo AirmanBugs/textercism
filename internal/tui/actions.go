@@ -140,7 +140,8 @@ func (m *model) downloadForInstructions(track, ex string) tea.Cmd {
 			_ = backend.Pull(ref, exercism.ExerciseDir(cfg, track, ex))
 		}
 		if !exercism.Downloaded(cfg, track, ex) {
-			if _, err := exercism.Download(cfg, track, ex); err != nil {
+			// Never force here — this only fetches instructions, never overwrites work.
+			if _, err := exercism.Download(cfg, track, ex, false); err != nil {
 				return instructionsReadyMsg{exercise: ex, status: "Could not load instructions: " + err.Error()}
 			}
 		}
@@ -161,8 +162,8 @@ func (m *model) openCmd(track, ex string, force bool) tea.Cmd {
 			_ = backend.Pull(ref, exercism.ExerciseDir(cfg, track, ex))
 		}
 		if !exercism.Downloaded(cfg, track, ex) || force {
-			if _, err := exercism.Download(cfg, track, ex); err != nil {
-				return actionDoneMsg{status: "Download failed: " + err.Error()}
+			if _, err := exercism.Download(cfg, track, ex, force); err != nil {
+				return actionDoneMsg{status: err.Error()}
 			}
 		}
 		if err := exercism.OpenVSCode(cfg, track, ex); err != nil {

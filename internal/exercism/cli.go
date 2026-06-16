@@ -12,14 +12,26 @@ import (
 // Download fetches an exercise via the official CLI into the Exercism workspace
 // (which is also textercism's storage), captures the pristine stub for later
 // edit detection, and returns the exercise dir.
-func Download(cfg *config.Config, track, exercise string) (string, error) {
+//
+// It REFUSES to overwrite a solution that has local edits unless force is true,
+// so it can never silently clobber work. `exercism download --force` always
+// overwrites, so we only pass it when the dir doesn't exist yet or force is set.
+func Download(cfg *config.Config, track, exercise string, force bool) (string, error) {
+	dir := ExerciseDir(cfg, track, exercise)
+
+	if dirExists(dir) && !force {
+		// Already present: never re-download (which would overwrite the solution).
+		return dir, nil
+	}
+	if !force && LocalStateOf(cfg, track, exercise) == OnDiskEdited {
+		return "", fmt.Errorf("refusing to overwrite edited solution for %s (use Restart to discard)", exercise)
+	}
+
 	out, err := exec.Command("exercism", "download",
 		"--track="+track, "--exercise="+exercise, "--force").CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("exercism download failed: %s", strings.TrimSpace(string(out)))
 	}
-
-	dir := ExerciseDir(cfg, track, exercise)
 	if !dirExists(dir) {
 		return "", fmt.Errorf("exercise not found at %s after download:\n%s", dir, strings.TrimSpace(string(out)))
 	}

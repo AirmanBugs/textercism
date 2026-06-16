@@ -38,7 +38,7 @@ func Start(cfg *config.Config, backend sync.Backend, track, exercise string, for
 		openEditor(cfg, track, exercise)
 		return
 	}
-	downloadAndOpen(cfg, track, exercise)
+	downloadAndOpen(cfg, track, exercise, force)
 }
 
 // Open continues an exercise: if it's not on this machine, try the sync backend
@@ -57,15 +57,15 @@ func Open(cfg *config.Config, backend sync.Backend, track, exercise string) {
 		openEditor(cfg, track, exercise)
 	case errors.Is(err, sync.ErrNoDraft):
 		info("Nothing to continue — downloading the stub.")
-		downloadAndOpen(cfg, track, exercise)
+		downloadAndOpen(cfg, track, exercise, false)
 	default:
 		fail("Sync pull failed: " + err.Error())
 	}
 }
 
-func downloadAndOpen(cfg *config.Config, track, exercise string) {
+func downloadAndOpen(cfg *config.Config, track, exercise string, force bool) {
 	info(fmt.Sprintf("Downloading %s/%s ...", track, exercise))
-	dir, err := exercism.Download(cfg, track, exercise)
+	dir, err := exercism.Download(cfg, track, exercise, force)
 	if err != nil {
 		fail(err.Error())
 		return

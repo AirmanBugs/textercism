@@ -1,0 +1,154 @@
+Compiling 1 file (.ex)
+Generated bird_count app
+Running ExUnit with seed: 0, max_cases: 1
+Excluding tags: [:pending]
+
+    warning: BirdCount.increment_day_count/1 is undefined or private
+    │
+ 20 │       assert BirdCount.increment_day_count([]) == [1]
+    │                        ~
+    │
+    └─ test/bird_count_test.exs:20:24: BirdCountTest."test increment_day_count/1 creates entry for today if no bird watching data recorded"/1
+    └─ test/bird_count_test.exs:25:24: BirdCountTest."test increment_day_count/1 adds 1 to today's bird count"/1
+    └─ test/bird_count_test.exs:26:24: BirdCountTest."test increment_day_count/1 adds 1 to today's bird count"/1
+
+    warning: BirdCount.has_day_without_birds?/1 is undefined or private
+    │
+ 33 │       assert BirdCount.has_day_without_birds?([]) == false
+    │                        ~
+    │
+    └─ test/bird_count_test.exs:33:24: BirdCountTest."test has_day_without_birds?/1 false if no bird watching data recorded"/1
+    └─ test/bird_count_test.exs:38:24: BirdCountTest."test has_day_without_birds?/1 false if there are no zeros in bird watching data"/1
+    └─ test/bird_count_test.exs:39:24: BirdCountTest."test has_day_without_birds?/1 false if there are no zeros in bird watching data"/1
+    └─ test/bird_count_test.exs:44:24: BirdCountTest."test has_day_without_birds?/1 true if there are is at least one zero in bird watching data"/1
+    └─ test/bird_count_test.exs:45:24: BirdCountTest."test has_day_without_birds?/1 true if there are is at least one zero in bird watching data"/1
+    └─ test/bird_count_test.exs:46:24: BirdCountTest."test has_day_without_birds?/1 true if there are is at least one zero in bird watching data"/1
+
+    warning: BirdCount.total/1 is undefined or private
+    │
+ 53 │       assert BirdCount.total([]) == 0
+    │                        ~
+    │
+    └─ test/bird_count_test.exs:53:24: BirdCountTest."test total/1 zero if no bird watching data recorded"/1
+    └─ test/bird_count_test.exs:58:24: BirdCountTest."test total/1 sums up bird counts"/1
+    └─ test/bird_count_test.exs:59:24: BirdCountTest."test total/1 sums up bird counts"/1
+
+    warning: BirdCount.busy_days/1 is undefined or private
+    │
+ 66 │       assert BirdCount.busy_days([]) == 0
+    │                        ~
+    │
+    └─ test/bird_count_test.exs:66:24: BirdCountTest."test busy_days/1 zero if no bird watching data recorded"/1
+    └─ test/bird_count_test.exs:71:24: BirdCountTest."test busy_days/1 counts days with bird count of 5 or more"/1
+    └─ test/bird_count_test.exs:72:24: BirdCountTest."test busy_days/1 counts days with bird count of 5 or more"/1
+    └─ test/bird_count_test.exs:73:24: BirdCountTest."test busy_days/1 counts days with bird count of 5 or more"/1
+
+
+BirdCountTest [test/bird_count_test.exs]
+  * test today/1 returns nil if no bird watching data recorded [L#6]  * test today/1 returns nil if no bird watching data recorded (0.4ms) [L#6]
+
+  1) test today/1 returns nil if no bird watching data recorded (BirdCountTest)
+     test/bird_count_test.exs:6
+     ** (MatchError) no match of right hand side value:
+
+         []
+
+     code: assert BirdCount.today([]) == nil
+     stacktrace:
+       (bird_count 0.1.0) lib/bird_count.ex:3: BirdCount.today/1
+       test/bird_count_test.exs:7: (test)
+
+  * test today/1 returns today's bird count [L#11]  * test today/1 returns today's bird count (0.00ms) [L#11]
+  * test increment_day_count/1 creates entry for today if no bird watching data recorded [L#19]  * test increment_day_count/1 creates entry for today if no bird watching data recorded (0.00ms) [L#19]
+
+  2) test increment_day_count/1 creates entry for today if no bird watching data recorded (BirdCountTest)
+     test/bird_count_test.exs:19
+     ** (UndefinedFunctionError) function BirdCount.increment_day_count/1 is undefined or private
+     code: assert BirdCount.increment_day_count([]) == [1]
+     stacktrace:
+       (bird_count 0.1.0) BirdCount.increment_day_count([])
+       test/bird_count_test.exs:20: (test)
+
+  * test increment_day_count/1 adds 1 to today's bird count [L#24]  * test increment_day_count/1 adds 1 to today's bird count (0.00ms) [L#24]
+
+  3) test increment_day_count/1 adds 1 to today's bird count (BirdCountTest)
+     test/bird_count_test.exs:24
+     ** (UndefinedFunctionError) function BirdCount.increment_day_count/1 is undefined or private
+     code: assert BirdCount.increment_day_count([5]) == [6]
+     stacktrace:
+       (bird_count 0.1.0) BirdCount.increment_day_count([5])
+       test/bird_count_test.exs:25: (test)
+
+  * test has_day_without_birds?/1 false if no bird watching data recorded [L#32]  * test has_day_without_birds?/1 false if no bird watching data recorded (0.00ms) [L#32]
+
+  4) test has_day_without_birds?/1 false if no bird watching data recorded (BirdCountTest)
+     test/bird_count_test.exs:32
+     ** (UndefinedFunctionError) function BirdCount.has_day_without_birds?/1 is undefined or private
+     code: assert BirdCount.has_day_without_birds?([]) == false
+     stacktrace:
+       (bird_count 0.1.0) BirdCount.has_day_without_birds?([])
+       test/bird_count_test.exs:33: (test)
+
+  * test has_day_without_birds?/1 false if there are no zeros in bird watching data [L#37]  * test has_day_without_birds?/1 false if there are no zeros in bird watching data (0.00ms) [L#37]
+
+  5) test has_day_without_birds?/1 false if there are no zeros in bird watching data (BirdCountTest)
+     test/bird_count_test.exs:37
+     ** (UndefinedFunctionError) function BirdCount.has_day_without_birds?/1 is undefined or private
+     code: assert BirdCount.has_day_without_birds?([1]) == false
+     stacktrace:
+       (bird_count 0.1.0) BirdCount.has_day_without_birds?([1])
+       test/bird_count_test.exs:38: (test)
+
+  * test has_day_without_birds?/1 true if there are is at least one zero in bird watching data [L#43]  * test has_day_without_birds?/1 true if there are is at least one zero in bird watching data (0.00ms) [L#43]
+
+  6) test has_day_without_birds?/1 true if there are is at least one zero in bird watching data (BirdCountTest)
+     test/bird_count_test.exs:43
+     ** (UndefinedFunctionError) function BirdCount.has_day_without_birds?/1 is undefined or private
+     code: assert BirdCount.has_day_without_birds?([0]) == true
+     stacktrace:
+       (bird_count 0.1.0) BirdCount.has_day_without_birds?([0])
+       test/bird_count_test.exs:44: (test)
+
+  * test total/1 zero if no bird watching data recorded [L#52]  * test total/1 zero if no bird watching data recorded (0.00ms) [L#52]
+
+  7) test total/1 zero if no bird watching data recorded (BirdCountTest)
+     test/bird_count_test.exs:52
+     ** (UndefinedFunctionError) function BirdCount.total/1 is undefined or private
+     code: assert BirdCount.total([]) == 0
+     stacktrace:
+       (bird_count 0.1.0) BirdCount.total([])
+       test/bird_count_test.exs:53: (test)
+
+  * test total/1 sums up bird counts [L#57]  * test total/1 sums up bird counts (0.00ms) [L#57]
+
+  8) test total/1 sums up bird counts (BirdCountTest)
+     test/bird_count_test.exs:57
+     ** (UndefinedFunctionError) function BirdCount.total/1 is undefined or private
+     code: assert BirdCount.total([4]) == 4
+     stacktrace:
+       (bird_count 0.1.0) BirdCount.total([4])
+       test/bird_count_test.exs:58: (test)
+
+  * test busy_days/1 zero if no bird watching data recorded [L#65]  * test busy_days/1 zero if no bird watching data recorded (0.00ms) [L#65]
+
+  9) test busy_days/1 zero if no bird watching data recorded (BirdCountTest)
+     test/bird_count_test.exs:65
+     ** (UndefinedFunctionError) function BirdCount.busy_days/1 is undefined or private
+     code: assert BirdCount.busy_days([]) == 0
+     stacktrace:
+       (bird_count 0.1.0) BirdCount.busy_days([])
+       test/bird_count_test.exs:66: (test)
+
+  * test busy_days/1 counts days with bird count of 5 or more [L#70]  * test busy_days/1 counts days with bird count of 5 or more (0.00ms) [L#70]
+
+ 10) test busy_days/1 counts days with bird count of 5 or more (BirdCountTest)
+     test/bird_count_test.exs:70
+     ** (UndefinedFunctionError) function BirdCount.busy_days/1 is undefined or private
+     code: assert BirdCount.busy_days([1]) == 0
+     stacktrace:
+       (bird_count 0.1.0) BirdCount.busy_days([1])
+       test/bird_count_test.exs:71: (test)
+
+
+Finished in 0.01 seconds (0.00s async, 0.01s sync)
+11 tests, 10 failures

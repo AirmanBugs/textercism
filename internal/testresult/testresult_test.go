@@ -3,6 +3,7 @@ package testresult
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -59,6 +60,34 @@ func TestParseTrace(t *testing.T) {
 	}
 	if f.Failure.Left != "nil" || f.Failure.Right != "5" {
 		t.Errorf("left/right = %q / %q; want nil / 5", f.Failure.Left, f.Failure.Right)
+	}
+}
+
+func TestParseExceptionFailure(t *testing.T) {
+	res := Parse(load(t, "bird-count-matcherror.txt"))
+
+	var f *Test
+	for i := range res.Tests {
+		if !res.Tests[i].Passed && res.Tests[i].Failure.Error != "" {
+			f = &res.Tests[i]
+			break
+		}
+	}
+	if f == nil {
+		t.Fatal("no failure with an Error captured")
+	}
+	if !strings.Contains(f.Failure.Error, "MatchError") {
+		t.Errorf("error = %q, want it to mention MatchError", f.Failure.Error)
+	}
+	// The raised value should be folded into the error.
+	if !strings.Contains(f.Failure.Error, "[]") {
+		t.Errorf("error = %q, want it to include the raised value", f.Failure.Error)
+	}
+
+	// The rendered markdown shows the error, not just the bare code.
+	md := f.Failure.AssertionMarkdown()
+	if !strings.Contains(md, "error:") {
+		t.Errorf("assertion markdown missing error line:\n%s", md)
 	}
 }
 
