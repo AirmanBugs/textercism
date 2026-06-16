@@ -72,22 +72,29 @@ func TestParsePassing(t *testing.T) {
 	}
 }
 
-func TestMarkdownAssertionsToggle(t *testing.T) {
+func TestBannerAndAssertion(t *testing.T) {
 	res := Parse(load(t, "bird-count-trace.txt"))
 
-	compact := res.Markdown(false)
-	full := res.Markdown(true)
+	if got := res.Banner(); got != "✗ 1 of 11 passed" {
+		t.Fatalf("banner = %q; want '✗ 1 of 11 passed'", got)
+	}
+	if res.Passed() != 1 {
+		t.Fatalf("Passed() = %d; want 1", res.Passed())
+	}
 
-	// Compact lists numbered tests but no assertion code.
-	if !contains(compact, "1.") || !contains(compact, "✗") {
-		t.Fatalf("compact view missing numbered failures:\n%s", compact)
+	// A failed test's assertion markdown includes the code.
+	var f *Test
+	for i := range res.Tests {
+		if !res.Tests[i].Passed {
+			f = &res.Tests[i]
+			break
+		}
 	}
-	if contains(compact, "assert BirdCount.today") {
-		t.Fatal("compact view should not include assertion code")
+	if f == nil {
+		t.Fatal("no failing test found")
 	}
-	// Full view includes the assertion code.
-	if !contains(full, "assert BirdCount.today([5]) == 5") {
-		t.Fatal("full view should include assertion code")
+	if md := f.Failure.AssertionMarkdown(); !contains(md, "assert ") {
+		t.Fatalf("assertion markdown missing code:\n%s", md)
 	}
 }
 

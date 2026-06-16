@@ -142,56 +142,38 @@ func Parse(raw string) Result {
 	return res
 }
 
-// Summary is a one-line result for the footer/status, e.g. "✓ 8 passed" or
-// "✗ 10 of 11 failed".
-func (r Result) Summary() string {
-	if r.AllPassed {
-		return fmt.Sprintf("✓ %d passed", r.Total)
+// Passed returns the number of passing tests.
+func (r Result) Passed() int { return r.Total - r.Failures }
+
+// Banner is the headline result, e.g. "✓ 11 of 11 passed" or "✗ 1 of 11 passed".
+func (r Result) Banner() string {
+	mark := "✓"
+	if !r.AllPassed {
+		mark = "✗"
 	}
-	return fmt.Sprintf("✗ %d of %d failed", r.Failures, r.Total)
+	return fmt.Sprintf("%s %d of %d passed", mark, r.Passed(), r.Total)
 }
 
-// Markdown renders the result as clean markdown: a banner, then a numbered list
-// of every test with ✓/✗. When showAssertions is true, failed tests also show
-// their location and assertion detail (code, left, right).
-func (r Result) Markdown(showAssertions bool) string {
+// Summary is a short status-line form, e.g. "1 of 11 passed".
+func (r Result) Summary() string {
+	return fmt.Sprintf("%d of %d passed", r.Passed(), r.Total)
+}
+
+// AssertionMarkdown renders a failed test's assertion detail (code, left, right)
+// as markdown, for Glamour. Empty when there's nothing to show.
+func (f Failure) AssertionMarkdown() string {
 	var b strings.Builder
-
-	if r.AllPassed {
-		fmt.Fprintf(&b, "# ✓ All %d tests passed\n\n", r.Total)
-	} else {
-		fmt.Fprintf(&b, "# ✗ %d of %d tests failed\n\n", r.Failures, r.Total)
+	if f.Location != "" {
+		fmt.Fprintf(&b, "`%s`\n\n", f.Location)
 	}
-
-	// Fall back to the failure list if --trace gave us no ordered tests.
-	if len(r.Tests) == 0 {
-		return b.String()
+	switch {
+	case f.Code != "":
+		fmt.Fprintf(&b, "```elixir\n%s\n```\n", f.Code)
+		if f.Left != "" || f.Right != "" {
+			fmt.Fprintf(&b, "- left:  `%s`\n- right: `%s`\n", f.Left, f.Right)
+		}
+	case f.Message != "":
+		fmt.Fprintf(&b, "%s\n", f.Message)
 	}
-
-	for i, t := range r.Tests {
-		mark := "✓"
-		if !t.Passed {
-			mark = "✗"
-		}
-		fmt.Fprintf(&b, "%d. %s %s\n", i+1, mark, t.Name)
-
-		if t.Passed || !showAssertions {
-			continue
-		}
-		f := t.Failure
-		if f.Location != "" {
-			fmt.Fprintf(&b, "   `%s`\n", f.Location)
-		}
-		switch {
-		case f.Code != "":
-			fmt.Fprintf(&b, "```elixir\n%s\n```\n", f.Code)
-			if f.Left != "" || f.Right != "" {
-				fmt.Fprintf(&b, "- left:  `%s`\n- right: `%s`\n", f.Left, f.Right)
-			}
-		case f.Message != "":
-			fmt.Fprintf(&b, "   %s\n", f.Message)
-		}
-	}
-
 	return b.String()
 }

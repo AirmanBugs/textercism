@@ -19,9 +19,8 @@ type actionDoneMsg struct{ status string }
 
 // testDoneMsg carries parsed test results to show in the right pane.
 type testDoneMsg struct {
-	status string            // footer summary, e.g. "✗ 10 of 11 failed"
-	result testresult.Result // parsed result, for re-rendering on the assertions toggle
-	clean  string            // rendered clean view (markdown -> ANSI)
+	status string            // footer summary, e.g. "1 of 11 passed"
+	result testresult.Result // parsed result (the clean view is rendered from this)
 	raw    string            // raw, lightly cleaned output
 	width  int
 }
@@ -45,8 +44,8 @@ func (m *model) runAction(kind ActionKind) (tea.Model, tea.Cmd) {
 			m.status = "Not downloaded — Start it first."
 			return m, nil
 		}
-		m.status = "Running tests…"
-		return m, m.testCmd(track, ex)
+		m.testRunning = true
+		return m, tea.Batch(m.spinner.Tick, m.testCmd(track, ex))
 	case ActionSubmit:
 		return m, m.suspendSubmit(track, ex)
 
@@ -67,14 +66,11 @@ func (m *model) runAction(kind ActionKind) (tea.Model, tea.Cmd) {
 // returns the parsed result plus the raw output for the pane.
 func (m *model) testCmd(track, ex string) tea.Cmd {
 	cfg, width := m.cfg, m.viewport.Width
-	showAssertions := m.showAssertions
 	return func() tea.Msg {
 		out, _ := exercism.TestCmdTrace(cfg, track, ex).CombinedOutput()
 		res := testresult.Parse(string(out))
-
-		clean := render.Markdown(res.Markdown(showAssertions), width)
 		raw := render.Markdown("```\n"+cleanRaw(string(out))+"\n```\n", width)
-		return testDoneMsg{status: res.Summary(), result: res, clean: clean, raw: raw, width: width}
+		return testDoneMsg{status: res.Summary(), result: res, raw: raw, width: width}
 	}
 }
 

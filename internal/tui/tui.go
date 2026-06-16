@@ -14,6 +14,7 @@ import (
 	"github.com/AirmanBugs/textercism/internal/testresult"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -50,17 +51,18 @@ type model struct {
 	screen   screen
 	list     list.Model
 	viewport viewport.Model // right-hand pane on the action screen
+	spinner  spinner.Model  // shown in the status line while tests run
 	stacked  bool           // true when the terminal is too narrow for side-by-side
 	status   string         // transient status line on the action screen
 
 	pane           paneMode          // what the right pane shows: instructions or test output
 	paneFocused    bool              // true when the right pane (not the action list) has focus
 	instructions   string            // rendered instructions (cached for the selected exercise)
-	testResult     testresult.Result // last parsed test result (for re-rendering)
-	testClean      string            // rendered clean test results
+	testResult     testresult.Result // last parsed test result (clean view rendered from this)
 	testRaw        string            // rendered raw test output (for the "r" toggle)
 	showRawTest    bool              // whether the test pane shows raw output
 	showAssertions bool              // whether the clean view expands assertion detail
+	testRunning    bool              // a test run is in progress (drives the spinner)
 
 	track     string
 	exercises []exercism.Exercise
@@ -91,11 +93,16 @@ const actionPaneWidth = 34
 // submit, …) run inside the TUI: test/submit suspend to the full terminal, the
 // rest run in the background and report a status line.
 func Run(cfg *config.Config, backend sync.Backend, startTrack string) error {
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+	sp.Style = statusStyle
+
 	m := &model{
 		cfg:      cfg,
 		client:   exercism.NewClient(cfg),
 		backend:  backend,
 		showSync: backend.SyncsAcrossDevices(),
+		spinner:  sp,
 	}
 
 	if startTrack != "" {
@@ -142,15 +149,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case testDoneMsg:
-		// Tests finished: show the clean results in the right pane and focus it so
-		// the user can scroll immediately.
+		// Tests finished: show the clean results in the right pane. Focus stays on
+		// the action list (don't yank it away).
+		m.testRunning = false
 		m.status = msg.status
 		m.testResult = msg.result
-		m.testClean = msg.clean
 		m.testRaw = msg.raw
 		m.showRawTest = false
 		m.pane = paneTestOutput
-		m.paneFocused = true
 		if m.screen == screenActions {
 			m.viewport.SetContent(m.paneContent())
 			m.viewport.GotoTop()
@@ -170,6 +176,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.viewport.GotoTop()
 			}
 			m.relayout()
+		}
+		return m, nil
+
+	case spinner.TickMsg:
+		// Keep the spinner animating only while a test run is in progress.
+		if m.testRunning {
+			var cmd tea.Cmd
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
 		}
 		return m, nil
 
@@ -226,7 +241,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Toggle assertion detail in the clean test view.
 				if m.pane == paneTestOutput && !m.showRawTest {
 					m.showAssertions = !m.showAssertions
-					m.testClean = render.Markdown(m.testResult.Markdown(m.showAssertions), m.viewport.Width)
 					m.viewport.SetContent(m.paneContent())
 					m.viewport.GotoTop()
 					return m, nil
@@ -296,7 +310,7 @@ func (m *model) paneContent() string {
 		if m.showRawTest {
 			return m.testRaw
 		}
-		return m.testClean
+		return renderTestView(m.testResult, m.viewport.Width, m.showAssertions)
 	}
 	return m.renderInstructions(m.viewport.Width)
 }
@@ -336,7 +350,10 @@ func (m *model) View() string {
 		hint = paneHints + " · " + hint
 	}
 	line := footerStyle.Render(hint)
-	if m.status != "" {
+	switch {
+	case m.testRunning:
+		line = m.spinner.View() + statusStyle.Render("Running tests…") + "  " + line
+	case m.status != "":
 		line = statusStyle.Render(m.status) + "  " + line
 	}
 
@@ -433,7 +450,7 @@ func (m *model) enterActions(ex exercism.Exercise) tea.Cmd {
 	m.status = ""
 	m.pane = paneInstructions
 	m.paneFocused = false
-	m.testClean = ""
+	m.testResult = testresult.Result{}
 	m.testRaw = ""
 	m.showRawTest = false
 	m.list = newActionList(m.cfg, m.track, ex, m.showSync, m.width, m.height-1)
