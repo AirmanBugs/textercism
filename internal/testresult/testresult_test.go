@@ -91,6 +91,33 @@ func TestParseExceptionFailure(t *testing.T) {
 	}
 }
 
+func TestParseFunctionClauseError(t *testing.T) {
+	res := Parse(load(t, "bird-count-funcclause.txt"))
+
+	var f *Test
+	for i := range res.Tests {
+		if !res.Tests[i].Passed && strings.Contains(res.Tests[i].Failure.Error, "FunctionClauseError") {
+			f = &res.Tests[i]
+			break
+		}
+	}
+	if f == nil {
+		t.Fatal("no FunctionClauseError captured")
+	}
+	err := f.Failure.Error
+	// Artifacts cleaned: clauses read as valid Elixir, no "-[]-".
+	if strings.Contains(err, "-[") || strings.Contains(err, "]-") {
+		t.Errorf("error still has -...- artifacts:\n%s", err)
+	}
+	if !strings.Contains(err, "def today([])") {
+		t.Errorf("error missing cleaned clause 'def today([])':\n%s", err)
+	}
+	// Multi-line structure preserved.
+	if !strings.Contains(err, "\n") {
+		t.Errorf("error flattened to one line:\n%s", err)
+	}
+}
+
 func TestParsePassing(t *testing.T) {
 	res := Parse(load(t, "pass.txt"))
 	if !res.AllPassed {

@@ -70,6 +70,7 @@ func Parse(raw string) Result {
 	var cur *Failure
 	flush := func() {
 		if cur != nil {
+			cur.Error = collapseBlanks(strings.TrimSpace(cur.Error))
 			failures[curName] = *cur
 			cur, curName = nil, ""
 		}
@@ -79,6 +80,7 @@ func Parse(raw string) Result {
 	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 
 	var order []Test // tests in run order, from --trace lines
+	inError := false // collecting a multi-line exception block
 	for scanner.Scan() {
 		line := scanner.Text()
 
@@ -97,6 +99,7 @@ func Parse(raw string) Result {
 
 		if m := failureHeader.FindStringSubmatch(line); m != nil {
 			flush()
+			inError = false
 			curName = strings.TrimSpace(m[1])
 			cur = &Failure{}
 			continue
@@ -106,6 +109,7 @@ func Parse(raw string) Result {
 		}
 		if strings.TrimSpace(line) == "stacktrace:" {
 			flush()
+			inError = false
 			continue
 		}
 		if cur.Location == "" {
@@ -114,12 +118,16 @@ func Parse(raw string) Result {
 				continue
 			}
 		}
-		// A raised exception: "** (MatchError) no match of right hand side value:"
+		// A raised exception: "** (MatchError) no match of right hand side value:".
+		// Start collecting the multi-line exception block (cleaned of ExUnit's
+		// underline/diff "-...-" markers) until we reach code:/stacktrace:.
 		if m := errorRe.FindStringSubmatch(line); m != nil {
-			cur.Error = strings.TrimSpace(m[1])
+			inError = true
+			cur.Error = cleanArtifacts(strings.TrimSpace(m[1]))
 			continue
 		}
 		if m := fieldLine.FindStringSubmatch(line); m != nil {
+			inError = false
 			switch m[1] {
 			case "code":
 				cur.Code = strings.TrimSpace(m[2])
@@ -130,13 +138,13 @@ func Parse(raw string) Result {
 			}
 			continue
 		}
-		t := strings.TrimSpace(line)
-		// The value following an exception (e.g. the "[]" under a MatchError) — fold
-		// it onto the error line until we reach the code/fields.
-		if cur.Error != "" && cur.Code == "" && t != "" && !strings.HasSuffix(t, "failed") {
-			cur.Error += " " + t
+		if inError {
+			// Preserve the block's line structure; dedent by the common 5-space
+			// indent ExUnit uses, and clean the marker artifacts.
+			cur.Error += "\n" + cleanArtifacts(dedent(line))
 			continue
 		}
+		t := strings.TrimSpace(line)
 		if strings.HasSuffix(t, "failed") && cur.Message == "" {
 			cur.Message = t
 		}
@@ -155,6 +163,44 @@ func Parse(raw string) Result {
 	}
 
 	return res
+}
+
+// artifactRe matches ExUnit's diff/underline markers around code in exception
+// messages, e.g. "def today(-[]-)" -> "def today([])". They come from stripped
+// ANSI underline sequences.
+var artifactRe = regexp.MustCompile(`-(\[[^\]]*\]|\([^)]*\)|[^-\s]+)-`)
+
+// cleanArtifacts removes the "-...-" marker artifacts from a line.
+func cleanArtifacts(s string) string {
+	return artifactRe.ReplaceAllString(s, "$1")
+}
+
+// dedent removes up to 5 leading spaces (ExUnit's failure-block indent), keeping
+// any deeper indentation (e.g. nested clause lists) relative.
+func dedent(s string) string {
+	for i := 0; i < 5; i++ {
+		if strings.HasPrefix(s, " ") {
+			s = s[1:]
+		} else {
+			break
+		}
+	}
+	return s
+}
+
+// collapseBlanks collapses runs of blank lines into a single blank line.
+func collapseBlanks(s string) string {
+	var out []string
+	prevBlank := false
+	for _, ln := range strings.Split(s, "\n") {
+		blank := strings.TrimSpace(ln) == ""
+		if blank && prevBlank {
+			continue
+		}
+		out = append(out, ln)
+		prevBlank = blank
+	}
+	return strings.Join(out, "\n")
 }
 
 // Passed returns the number of passing tests.
@@ -187,7 +233,9 @@ func (f Failure) AssertionMarkdown() string {
 	switch {
 	case f.Error != "":
 		// A raised exception — the code crashed rather than returning a value.
-		fmt.Fprintf(&b, "- error: `%s`\n", f.Error)
+		// Render the multi-line message in a code block so its structure (the
+		// attempted clauses, the given arguments) is preserved, not flattened.
+		fmt.Fprintf(&b, "**error:**\n```\n%s\n```\n", f.Error)
 	case f.Left != "" || f.Right != "":
 		fmt.Fprintf(&b, "- your result: `%s`\n- expected:    `%s`\n", f.Left, f.Right)
 	case f.Message != "" && f.Code == "":
